@@ -1,4 +1,4 @@
-# MoReV2X-A New Radio Vehicular Communication Module for ns-3
+# MoReV2X - A New Radio (NR) Vehicular Communication Module for ns-3
 MoReV2X is a ns-3 module for the simulation of sub-6 GHz NR-V2X communications.  
 The implementation of MoReV2X is exclusively focused on Mode 2, the distributed access strategy allowing the direct data exchange between vehicles.
 
