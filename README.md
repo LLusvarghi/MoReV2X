@@ -1,7 +1,14 @@
 # MoReV2X - A New Radio (NR) Vehicular Communication Module for ns-3
 MoReV2X is a ns-3 module for the simulation of sub-6 GHz NR-V2X communications.  
 The implementation of MoReV2X is exclusively focused on Mode 2, the distributed access strategy allowing the direct data exchange between vehicles.  
+
 The MoReV2X module is backward compatible and implements LTE-V2X Mode 4 as well.  
+
+To run the code, configure the ns-3 build using the following command:  
+'CXXFLAGS="-Wall -g -O0" ./waf configure --disable-python --disable-examples --enable-tests --build-profile=debug'  
+
+and then copy the HIGHWAY example in the scratch folder.
+
 Should you need any information about the code and how to run it please feel free to contact: luca.lusvarghi5@unimore.it
 
 # Contributors
