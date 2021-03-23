@@ -1,5 +1,5 @@
 # Repository under construction
-![Icon](https://github.com/LLusvarghi/Work-in-progress.png)
+![Icon](https://github.com/LLusvarghi/MoReV2X/blob/main/Work-in-progress.png)
 
 # MoReV2X - A New Radio (NR) Vehicular Communication Module for ns-3
 MoReV2X is a ns-3 module for the simulation of sub-6 GHz NR-V2X communications.  
