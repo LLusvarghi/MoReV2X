@@ -5,9 +5,9 @@ The implementation of MoReV2X is exclusively focused on Mode 2, the distributed 
 The MoReV2X module is backward compatible and implements LTE-V2X Mode 4 as well.  
 
 To run the code, configure the ns-3 build using the following command:  
-'CXXFLAGS="-Wall -g -O0" ./waf configure --disable-python --disable-examples --enable-tests --build-profile=debug'  
+`CXXFLAGS="-Wall -g -O0" ./waf configure --disable-python --disable-examples --enable-tests --build-profile=debug`
 
-and then copy the HIGHWAY example in the scratch folder.
+and then copy the `HIGHWAY` example in the scratch folder.
 
 Should you need any information about the code and how to run it please feel free to contact: luca.lusvarghi5@unimore.it
 
