@@ -7,8 +7,10 @@ Luca Lusvarghi (luca.lusvarghi5@unimore.it)
 Lorenzo Gibellini 
 
 # About
-MoReV2X is based on the ns-3 LTE-D2D implementation deveveloped by NIST and presented in:  Richard Rouil, Fernando J. Cintrón, Aziza Ben Mosbah, and Samantha Gamboa. 2017. Implementation and Validation of an LTE D2D Model for Ns-3. In Proceedings of the Workshop on Ns-3 (Porto, Portugal) (WNS3 ‘17). ACM, New York, NY,
+MoReV2X is based on the ns-3 LTE-D2D implementation deveveloped by NIST and presented in:  
+Richard Rouil, Fernando J. Cintrón, Aziza Ben Mosbah, and Samantha Gamboa. 2017. Implementation and Validation of an LTE D2D Model for Ns-3. In Proceedings of the Workshop on Ns-3 (Porto, Portugal) (WNS3 ‘17). ACM, New York, NY,
 USA, 55–62. https://doi.org/10.1145/3067665.3067668  
+  
 MoReV2X has been tested with ns-3.22.
 
 # License
