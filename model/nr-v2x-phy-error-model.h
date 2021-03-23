@@ -19,8 +19,8 @@
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NR_V2X_PHY_ERROR_MODEL_H
-#define NR_V2X_PHY_ERROR_MODEL_H
+#ifndef NIST_LTE_PHY_ERROR_MODEL_H
+#define NIST_LTE_PHY_ERROR_MODEL_H
 #include <stdint.h>
 #include <ns3/nist-lte-harq-phy.h>
 #include "ns3/random-variable-stream.h"
@@ -46,7 +46,7 @@ namespace ns3 {
 /**
   * This class contains functions to access the BLER model
   */
-class NrV2xPhyErrorModel
+class NistLtePhyErrorModel
 {
 
 public:
@@ -175,4 +175,4 @@ public:
 
 }; //end class
 } // namespace ns3
-#endif /* NR_V2X_PHY_ERROR_MODEL_H */
+#endif /* NIST_LTE_PHY_ERROR_MODEL_H */

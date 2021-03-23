@@ -431,7 +431,8 @@ void LoadCAMtraces (NodeContainer VehicleUEs)
       std::vector<std::string> row; 
       std::vector<int> row_int; 
       std::ifstream CAMtraceFile;
-      CAMtraceFile.open("/home/luca/Desktop/C-V2V/CAM-tools/CAM-model/CAMtraces/CAMtrace_" + std::to_string(ID) + ".csv");
+//      CAMtraceFile.open("/home/luca/Desktop/C-V2V/CAM-tools/CAM-model/CAMtraces/CAMtrace_" + std::to_string(ID) + ".csv");
+      CAMtraceFile.open("/home/luca/Desktop/C-V2V/src/MoReV2X/CAM-tools/CAM-model/CAMtraces/CAMtrace_" + std::to_string(ID) + ".csv");
       if (CAMtraceFile.is_open())
       {  
         while ( getline (CAMtraceFile,line) )
@@ -897,7 +898,8 @@ main (int argc, char *argv[])
      LargestCAMSize = 500;
 //     system("CAM-tools/test.sh");
      //std::string veh = std::to_string(vehiclesCount);
-     system(("cd CAM-tools/CAM-model/ && python3 NS3_traces_generation.py -p CAMtraces --model Complete --scenario Highway --profile Volkswagen -m 5 -n " + std::to_string(vehiclesCount) + " -t 30 ").c_str());
+
+     system(("cd src/MoReV2X/CAM-tools/CAM-model/ && python3 NS3_traces_generation.py -p CAMtraces --model Complete --scenario Highway --profile Volkswagen -m 5 -n " + std::to_string(vehiclesCount) + " -t 30 ").c_str());
 //     std::cin.get();
      LoadCAMtraces(ueResponders);
    }

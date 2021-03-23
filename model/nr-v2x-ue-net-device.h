@@ -19,8 +19,8 @@
  *         Nicola Baldo <nbaldo@cttc.es>
  */
 
-#ifndef NR_V2X_UE_NET_DEVICE_H
-#define NR_V2X_UE_NET_DEVICE_H
+#ifndef NIST_LTE_UE_NET_DEVICE_H
+#define NIST_LTE_UE_NET_DEVICE_H
 
 #include "ns3/nist-lte-net-device.h"
 #include "ns3/event-id.h"
@@ -37,9 +37,9 @@ class Packet;
 class PacketBurst;
 class Node;
 class NistLtePhy;
-class NrV2xUePhy;
+class NistLteUePhy;
 class NistLteEnbNetDevice;
-class NrV2xUeMac;
+class NistLteUeMac;
 class NistLteUeRrc;
 class NistEpcUeNas;
 class NistEpcTft;
@@ -48,14 +48,14 @@ class NistEpcTft;
  * \ingroup lte
  * The NistLteUeNetDevice class implements the UE net device
  */
-class NrV2xUeNetDevice : public NrV2xUeNetDevice
+class NistLteUeNetDevice : public NistLteNetDevice
 {
 
 public:
   static TypeId GetTypeId (void);
 
-  NrV2xUeNetDevice (void);
-  virtual ~NrV2xUeNetDevice (void);
+  NistLteUeNetDevice (void);
+  virtual ~NistLteUeNetDevice (void);
   virtual void DoDispose ();
 
 
@@ -63,11 +63,11 @@ public:
   virtual bool Send (Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber);
 
 
-  Ptr<NrV2xUeMac> GetMac (void) const;
+  Ptr<NistLteUeMac> GetMac (void) const;
 
   Ptr<NistLteUeRrc> GetRrc () const;
 
-  Ptr<NrV2xUePhy> GetPhy (void) const;
+  Ptr<NistLteUePhy> GetPhy (void) const;
 
   Ptr<NistEpcUeNas> GetNas (void) const;
 
@@ -142,8 +142,8 @@ private:
 
   Ptr<NistLteEnbNetDevice> m_targetEnb;
 
-  Ptr<NrV2xUeMac> m_mac;
-  Ptr<NrV2xUePhy> m_phy;
+  Ptr<NistLteUeMac> m_mac;
+  Ptr<NistLteUePhy> m_phy;
   Ptr<NistLteUeRrc> m_rrc;
   Ptr<NistEpcUeNas> m_nas;
 
@@ -159,4 +159,4 @@ private:
 
 } // namespace ns3
 
-#endif /* NR_V2X_UE_NET_DEVICE_H */
+#endif /* NIST_LTE_UE_NET_DEVICE_H */

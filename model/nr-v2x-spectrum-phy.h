@@ -22,8 +22,8 @@
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NR_V2X_SPECTRUM_PHY_H
-#define NR_V2X_SPECTRUM_PHY_H
+#ifndef NIST_LTE_SPECTRUM_PHY_H
+#define NIST_LTE_SPECTRUM_PHY_H
 
 #include <ns3/event-id.h>
 #include <ns3/spectrum-value.h>
@@ -183,7 +183,7 @@ struct NistSlCtrlPacketInfo_t
 };
 
 /**
-* this method is invoked by the NrV2xSpectrumPhy to notify the PHY that the
+* this method is invoked by the NistLteSpectrumPhy to notify the PHY that the
 * transmission of a given packet has been completed.
 *
 * @param packet the Packet whose TX has been completed.
@@ -191,12 +191,12 @@ struct NistSlCtrlPacketInfo_t
 typedef Callback< void, Ptr<const Packet> > NistLtePhyTxEndCallback;
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the PHY that a
 * previously started RX attempt has terminated without success
 */
 typedef Callback< void > NistLtePhyRxDataEndErrorCallback;
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the PHY that a
 * previously started RX attempt has been successfully completed.
 *
 * @param packet the received Packet
@@ -205,7 +205,7 @@ typedef Callback< void, Ptr<Packet> > NistLtePhyRxDataEndOkCallback;
 
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the PHY that a
 * previously started RX of a control frame attempt has been 
 * successfully completed.
 *
@@ -214,20 +214,20 @@ typedef Callback< void, Ptr<Packet> > NistLtePhyRxDataEndOkCallback;
 typedef Callback< void, std::list<Ptr<NistLteControlMessage> > > NistLtePhyRxCtrlEndOkCallback;
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the PHY that a
 * previously started RX of a control frame attempt has terminated 
 * without success.
 */
 typedef Callback< void > NistLtePhyRxCtrlEndErrorCallback;
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the UE PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the UE PHY that a
 * PSS has been received
 */
 typedef Callback< void, uint16_t, Ptr<SpectrumValue> > NistLtePhyRxPssCallback;
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the UE PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the UE PHY that a
 * SLSS has been received
 */
 typedef Callback< void, uint16_t, Ptr<SpectrumValue> > NistLtePhyRxSlssCallback;
@@ -235,19 +235,19 @@ typedef Callback< void, uint16_t, Ptr<SpectrumValue> > NistLtePhyRxSlssCallback;
 //TODO FIXME NEW for V2X
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the UE PHY that a
+* This method is used by the NistLteSpectrumPhy to notify the UE PHY that a
 * PSSCH is starting to be received
 */
 typedef Callback< void, Ptr<SpectrumValue> > NistLtePhyRxDataStartCallback;
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the PHY about
+* This method is used by the NistLteSpectrumPhy to notify the PHY about
 * the status of a certain DL HARQ process
 */
 typedef Callback< void, NistDlInfoListElement_s > NistLtePhyDlHarqFeedbackCallback;
 
 /**
-* This method is used by the NrV2xSpectrumPhy to notify the PHY about
+* This method is used by the NistLteSpectrumPhy to notify the PHY about
 * the status of a certain UL HARQ process
 */
 typedef Callback< void, NistUlInfoListElement_s > NistLtePhyUlHarqFeedbackCallback;
@@ -261,17 +261,17 @@ typedef Callback< void, double, uint16_t, uint16_t> UnimoreReportRssiCallback;
 /**
  * \ingroup lte
  *
- * The NrV2xSpectrumPhy models the physical layer of LTE
+ * The NistLteSpectrumPhy models the physical layer of LTE
  *
  * It supports a single antenna model instance which is
  * used for both transmission and reception.  
  */
-class NrV2xSpectrumPhy : public SpectrumPhy
+class NistLteSpectrumPhy : public SpectrumPhy
 {
 
 public:
-  NrV2xSpectrumPhy ();
-  virtual ~NrV2xSpectrumPhy ();
+  NistLteSpectrumPhy ();
+  virtual ~NistLteSpectrumPhy ();
 
   /**
    *  PHY states
@@ -433,7 +433,7 @@ bool StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMes
   
   /**
   * set the callback for the successful end of a RX ctrl frame, as part 
-  * of the interconnections between the NrV2xSpectrumPhy and the PHY
+  * of the interconnections between the NistLteSpectrumPhy and the PHY
   *
   * @param c the callback
   */
@@ -441,7 +441,7 @@ bool StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMes
   
   /**
   * set the callback for the erroneous end of a RX ctrl frame, as part 
-  * of the interconnections between the NrV2xSpectrumPhy and the PHY
+  * of the interconnections between the NistLteSpectrumPhy and the PHY
   *
   * @param c the callback
   */
@@ -449,7 +449,7 @@ bool StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMes
 
   /**
   * set the callback for the reception of the PSS as part
-  * of the interconnections between the NrV2xSpectrumPhy and the UE PHY
+  * of the interconnections between the NistLteSpectrumPhy and the UE PHY
   *
   * @param c the callback
   */
@@ -457,7 +457,7 @@ bool StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMes
 
   /**
   * set the callback for the DL HARQ feedback as part of the 
-  * interconnections between the NrV2xSpectrumPhy and the PHY
+  * interconnections between the NistLteSpectrumPhy and the PHY
   *
   * @param c the callback
   */
@@ -465,7 +465,7 @@ bool StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMes
 
   /**
   * set the callback for the UL HARQ feedback as part of the
-  * interconnections between the NrV2xSpectrumPhy and the PHY
+  * interconnections between the NistLteSpectrumPhy and the PHY
   *
   * @param c the callback
   */
@@ -651,7 +651,7 @@ bool StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMes
    void SetSlssid (uint64_t slssid);
    /**
     * set the callback for the reception of the SLSS as part
-    * of the interconnections between the NrV2xSpectrumPhy and the UE PHY
+    * of the interconnections between the NistLteSpectrumPhy and the UE PHY
     *
     * @param c the callback
     */
@@ -700,7 +700,9 @@ private:
   
   // TODO FIXME UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X UNIMORE V2X
   std::vector<std::pair<uint32_t,double>> m_expectedSlTbSNR; //TX node ID and Received SNR value (in dB)
-
+ 
+  uint16_t m_NsubCh;
+  uint16_t m_SubCh_Len;
   double m_prevPrintTime;
 
   struct CountersLosses 
@@ -805,7 +807,7 @@ private:
   NistLtePhyDlHarqFeedbackCallback m_ltePhyDlHarqFeedbackCallback;
   NistLtePhyUlHarqFeedbackCallback m_ltePhyUlHarqFeedbackCallback;
 
-  Ptr<NrV2xSpectrumPhy> m_halfDuplexPhy;
+  Ptr<NistLteSpectrumPhy> m_halfDuplexPhy;
   bool m_errorModelHarqD2dDiscoveryEnabled;
   
   std::list< Ptr<SidelinkDiscResourcePool> > m_discRxPools;
@@ -860,4 +862,4 @@ private:
 
 }
 
-#endif /* NR_V2X_SPECTRUM_PHY_H */
+#endif /* NIST_LTE_SPECTRUM_PHY_H */

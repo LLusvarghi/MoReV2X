@@ -21,8 +21,8 @@
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NR_V2X_UE_MAC_ENTITY_H
-#define NR_V2X_UE_MAC_ENTITY_H
+#ifndef NIST_LTE_UE_MAC_ENTITY_H
+#define NIST_LTE_UE_MAC_ENTITY_H
 
 
 
@@ -47,7 +47,7 @@ namespace ns3 {
 
 class UniformRandomVariable;
 
-class NrV2xUeMac :   public Object
+class NistLteUeMac :   public Object
 {
   friend class NistUeMemberLteUeCmacSapProvider;
   friend class NistUeMemberLteMacSapProvider;
@@ -56,8 +56,8 @@ class NrV2xUeMac :   public Object
 public:
   static TypeId GetTypeId (void);
 
-  NrV2xUeMac ();
-  virtual ~NrV2xUeMac ();
+  NistLteUeMac ();
+  virtual ~NistLteUeMac ();
   virtual void DoDispose (void);
 
   NistLteMacSapProvider*  GetNistLteMacSapProvider (void);
@@ -95,7 +95,7 @@ public:
   * \param frameNo frame number
   * \param subframeNo subframe number
   */
-  void DoSlotIndication (uint32_t frameNo, uint32_t subframeNo);
+  void DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo);
 
  /**
   * Assign a fixed random variable stream number to the random variables
@@ -577,4 +577,4 @@ DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart
 
 } // namespace ns3
 
-#endif // NR_V2X_UE_MAC_ENTITY
+#endif // LTE_UE_MAC_ENTITY

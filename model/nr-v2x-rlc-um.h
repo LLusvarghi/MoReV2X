@@ -16,11 +16,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Author: Manuel Requena <manuel.requena@cttc.es>
- * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NR_V2X_RLC_UM_H
-#define NR_V2X_RLC_UM_H
+#ifndef NIST_LTE_RLC_UM_H
+#define NIST_LTE_RLC_UM_H
 
 #include "ns3/nist-lte-rlc-sequence-number.h"
 #include "ns3/nist-lte-rlc.h"
@@ -33,11 +32,11 @@ namespace ns3 {
 /**
  * LTE RLC Unacknowledged Mode (UM), see 3GPP TS 36.322
  */
-class NrV2xRlcUm : public NistLteRlc
+class NistLteRlcUm : public NistLteRlc
 {
 public:
-  NrV2xRlcUm ();
-  virtual ~NrV2xRlcUm ();
+  NistLteRlcUm ();
+  virtual ~NistLteRlcUm ();
   static TypeId GetTypeId (void);
   virtual void DoDispose ();
 
@@ -114,4 +113,4 @@ private:
 
 } // namespace ns3
 
-#endif // NR_V2X_RLC_UM_H
+#endif // NIST_LTE_RLC_UM_H

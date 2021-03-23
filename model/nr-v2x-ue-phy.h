@@ -19,11 +19,10 @@
  * Author: Marco Miozzo <mmiozzo@cttc.es>
  * Modified by: NIST
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
- *
  */
 
-#ifndef NR_V2X_UE_PHY_H
-#define NR_V2X_UE_PHY_H
+#ifndef NIST_LTE_UE_PHY_H
+#define NIST_LTE_UE_PHY_H
 
 
 #include <ns3/nist-lte-phy.h>
@@ -51,11 +50,11 @@ class NistLteHarqPhy;
  *
  * The NistLteSpectrumPhy models the physical layer of LTE
  */
-class NrV2xUePhy : public NistLtePhy
+class NistLteUePhy : public NistLtePhy
 {
 
   friend class NistUeMemberLteUePhySapProvider;
-  friend class NistMemberLteUeCphySapProvider<NrV2xUePhy>;
+  friend class NistMemberLteUeCphySapProvider<NistLteUePhy>;
 
 public:
   /**
@@ -71,16 +70,16 @@ public:
   /**
    * @warning the default constructor should not be used
    */
-  NrV2xUePhy ();
+  NistLteUePhy ();
 
   /**
    *
    * \param dlPhy the downlink NistLteSpectrumPhy instance
    * \param ulPhy the uplink NistLteSpectrumPhy instance
    */
-  NrV2xUePhy (Ptr<NistLteSpectrumPhy> dlPhy, Ptr<NistLteSpectrumPhy> ulPhy);
+  NistLteUePhy (Ptr<NistLteSpectrumPhy> dlPhy, Ptr<NistLteSpectrumPhy> ulPhy);
 
-  virtual ~NrV2xUePhy ();
+  virtual ~NistLteUePhy ();
 
   // inherited from Object
   static TypeId GetTypeId (void);
@@ -326,7 +325,7 @@ public:
   uint16_t m_NonSingleArrival; 
   
   void UnimoreReceivedRssi (double rssi, uint16_t CSRindex, uint16_t ID);
-  void ReportCBR (uint16_t ID, uint16_t frameNo, uint16_t subframeNo);
+  void UnimoreEvaluateCBR (uint16_t ID, uint16_t frameNo, uint16_t subframeNo);
 
 
 private:

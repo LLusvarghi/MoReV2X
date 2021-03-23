@@ -29,7 +29,8 @@
 #include <ns3/simulator.h>
 #include <ns3/trace-source-accessor.h>
 #include <ns3/antenna-model.h>
-#include "nr-v2x-e-spectrum-phy.h"
+//#include "nist-lte-spectrum-phy.h"
+#include "nr-v2x-spectrum-phy.h"
 #include "nist-lte-spectrum-signal-parameters.h"
 #include "nist-lte-net-device.h"
 #include "nist-lte-radio-bearer-tag.h"
@@ -52,7 +53,7 @@
 
 namespace ns3 {
 
-NS_LOG_COMPONENT_DEFINE ("NrV2xSpectrumPhy");
+NS_LOG_COMPONENT_DEFINE ("NistLteSpectrumPhy");
 
 // duration of SRS portion of UL subframe  
 // = 1 symbol for SRS -1ns as margin to avoid overlapping simulator events
@@ -177,9 +178,9 @@ operator < (const NistDiscTbId_t& a, const NistDiscTbId_t& b)
 }
 
   
-NS_OBJECT_ENSURE_REGISTERED (NrV2xSpectrumPhy);
+NS_OBJECT_ENSURE_REGISTERED (NistLteSpectrumPhy);
 
-NrV2xSpectrumPhy::NrV2xSpectrumPhy ()
+NistLteSpectrumPhy::NistLteSpectrumPhy ()
   : m_state (IDLE),
     m_cellId (0),
   m_transmissionMode (0),
@@ -200,7 +201,8 @@ NrV2xSpectrumPhy::NrV2xSpectrumPhy ()
  
   m_prevPrintTime = 0;
   m_totalReceptions = 0;
-
+  m_NsubCh = 5;
+  m_SubCh_Len = 10;
 
   for (uint8_t i = 0; i < 7; i++)
     {
@@ -209,7 +211,7 @@ NrV2xSpectrumPhy::NrV2xSpectrumPhy ()
 }
 
 
-NrV2xSpectrumPhy::~NrV2xSpectrumPhy ()
+NistLteSpectrumPhy::~NistLteSpectrumPhy ()
 {
   NS_LOG_FUNCTION (this);
   m_expectedTbs.clear ();
@@ -218,7 +220,7 @@ NrV2xSpectrumPhy::~NrV2xSpectrumPhy ()
   m_txModeGain.clear ();
 }
 
-void NrV2xSpectrumPhy::DoDispose ()
+void NistLteSpectrumPhy::DoDispose ()
 {
   NS_LOG_FUNCTION (this);
   m_channel = 0;
@@ -249,20 +251,20 @@ void NrV2xSpectrumPhy::DoDispose ()
   SpectrumPhy::DoDispose ();
 } 
 
-std::ostream& operator<< (std::ostream& os, NrV2xSpectrumPhy::State s)
+std::ostream& operator<< (std::ostream& os, NistLteSpectrumPhy::State s)
 {
   switch (s)
     {
-    case NrV2xSpectrumPhy::IDLE:
+    case NistLteSpectrumPhy::IDLE:
       os << "IDLE";
       break;
-    case NrV2xSpectrumPhy::RX_DATA:
+    case NistLteSpectrumPhy::RX_DATA:
       os << "RX_DATA";
       break;
-    case NrV2xSpectrumPhy::RX_CTRL:
+    case NistLteSpectrumPhy::RX_CTRL:
       os << "RX_CTRL";
       break;
-    case NrV2xSpectrumPhy::TX:
+    case NistLteSpectrumPhy::TX:
       os << "TX";
       break;
     default:
@@ -273,105 +275,105 @@ std::ostream& operator<< (std::ostream& os, NrV2xSpectrumPhy::State s)
 }
 
 TypeId
-NrV2xSpectrumPhy::GetTypeId (void)
+NistLteSpectrumPhy::GetTypeId (void)
 {
-  static TypeId tid = TypeId ("ns3::NrV2xSpectrumPhy")
+  static TypeId tid = TypeId ("ns3::NistLteSpectrumPhy")
     .SetParent<SpectrumPhy> ()
     .AddTraceSource ("TxStart",
                      "Trace fired when a new transmission is started",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_phyTxStartTrace),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_phyTxStartTrace),
                      "ns3::PacketBurst::TracedCallback")
     .AddTraceSource ("TxEnd",
                      "Trace fired when a previosuly started transmission is finished",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_phyTxEndTrace),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_phyTxEndTrace),
                      "ns3::PacketBurst::TracedCallback")
     .AddTraceSource ("RxStart",
                      "Trace fired when the start of a signal is detected",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_phyRxStartTrace),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_phyRxStartTrace),
                      "ns3::PacketBurst::TracedCallback")
     .AddTraceSource ("RxEndOk",
                      "Trace fired when a previosuly started RX terminates successfully",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_phyRxEndOkTrace),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_phyRxEndOkTrace),
                      "ns3::Packet::TracedCallback")
     .AddTraceSource ("RxEndError",
                      "Trace fired when a previosuly started RX terminates with an error",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_phyRxEndErrorTrace),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_phyRxEndErrorTrace),
                      "ns3::Packet::TracedCallback")
     .AddAttribute ("DropRbOnCollisionEnabled",
                    "Activate/Deactivate the dropping colliding RBs regardless SINR value [by default is deactive].",
                     BooleanValue (false),
-                    MakeBooleanAccessor (&NrV2xSpectrumPhy::m_dropRbOnCollisionEnabled),
+                    MakeBooleanAccessor (&NistLteSpectrumPhy::m_dropRbOnCollisionEnabled),
                     MakeBooleanChecker ())
     .AddAttribute ("DataErrorModelEnabled",
                     "Activate/Deactivate the error model of data (TBs of PDSCH and PUSCH) [by default is active].",
                     BooleanValue (true),
-                   MakeBooleanAccessor (&NrV2xSpectrumPhy::m_dataErrorModelEnabled),
+                   MakeBooleanAccessor (&NistLteSpectrumPhy::m_dataErrorModelEnabled),
                     MakeBooleanChecker ())
     .AddAttribute ("CtrlErrorModelEnabled",
                     "Activate/Deactivate the error model of control (PCFICH-PDCCH decodification) [by default is active].",
                     BooleanValue (true),
-                    MakeBooleanAccessor (&NrV2xSpectrumPhy::m_ctrlErrorModelEnabled),
+                    MakeBooleanAccessor (&NistLteSpectrumPhy::m_ctrlErrorModelEnabled),
                     MakeBooleanChecker ())
     .AddAttribute ("NistErrorModelEnabled",
                    "Activate/Deactivate the NIST based error model [by default is active].",
                    BooleanValue (true),
-                   MakeBooleanAccessor (&NrV2xSpectrumPhy::m_nistErrorModelEnabled),
+                   MakeBooleanAccessor (&NistLteSpectrumPhy::m_nistErrorModelEnabled),
                    MakeBooleanChecker ())
     .AddAttribute ("SlDataBLERModelEnabled",
                    "Activate/Deactivate the PSSCH BLER model [by default is active].",
                    BooleanValue (true),
-                   MakeBooleanAccessor (&NrV2xSpectrumPhy::m_slBlerEnabled),
+                   MakeBooleanAccessor (&NistLteSpectrumPhy::m_slBlerEnabled),
                    MakeBooleanChecker ())
     .AddAttribute ("FadingModel",
                    "Fading model",
                    EnumValue (NistLtePhyErrorModel::AWGN),
-                   MakeEnumAccessor (&NrV2xSpectrumPhy::m_fadingModel),
+                   MakeEnumAccessor (&NistLteSpectrumPhy::m_fadingModel),
                    MakeEnumChecker (NistLtePhyErrorModel::AWGN, "AWGN")) 
     .AddTraceSource ("DlPhyReception",
                      "DL reception PHY layer statistics.",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_dlPhyReception),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_dlPhyReception),
                      "ns3::NistPhyReceptionStatParameters::TracedCallback")
     .AddTraceSource ("UlPhyReception",
                      "DL reception PHY layer statistics.",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_ulPhyReception),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_ulPhyReception),
                      "ns3::NistPhyReceptionStatParameters::TracedCallback")
     .AddTraceSource ("SlPhyReception",
                      "SL reception PHY layer statistics.",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_slPhyReception),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_slPhyReception),
                      "ns3::NistPhyReceptionStatParameters::TracedCallback")
     .AddTraceSource ("SlPscchReception",
                      "SL reception PCCH PHY layer statistics.",
-                     MakeTraceSourceAccessor (&NrV2xSpectrumPhy::m_slPscchReception),
+                     MakeTraceSourceAccessor (&NistLteSpectrumPhy::m_slPscchReception),
                      "ns3::NistPhyReceptionStatParameters::TracedCallback")
     .AddAttribute ("HalfDuplexPhy",
                    "a pointer to a spectrum phy object",
                    PointerValue (),
-                   MakePointerAccessor (&NrV2xSpectrumPhy::m_halfDuplexPhy),
-                   MakePointerChecker <NrV2xSpectrumPhy> ())
+                   MakePointerAccessor (&NistLteSpectrumPhy::m_halfDuplexPhy),
+                   MakePointerChecker <NistLteSpectrumPhy> ())
     .AddAttribute ("CtrlFullDuplexEnabled",
                     "Activate/Deactivate the full duplex in the PSCCH [by default is disable].",
                     BooleanValue (false),
-                    MakeBooleanAccessor (&NrV2xSpectrumPhy::m_ctrlFullDuplexEnabled),
+                    MakeBooleanAccessor (&NistLteSpectrumPhy::m_ctrlFullDuplexEnabled),
                     MakeBooleanChecker ())
     .AddAttribute ("ErrorModelHarqD2dDiscoveryEnabled",
                    "enable the error model and harq for D2D Discovery",
                    BooleanValue (true),
-                   MakeBooleanAccessor (&NrV2xSpectrumPhy::m_errorModelHarqD2dDiscoveryEnabled),
+                   MakeBooleanAccessor (&NistLteSpectrumPhy::m_errorModelHarqD2dDiscoveryEnabled),
                    MakeBooleanChecker ())
     .AddAttribute ("SaveCollisionEnabled",  // DEPRECATED, don't use
                    "Enable collision event saving",
                    BooleanValue (false), 
-                   MakeBooleanAccessor (&NrV2xSpectrumPhy::m_saveCollisions),
+                   MakeBooleanAccessor (&NistLteSpectrumPhy::m_saveCollisions),
                    MakeBooleanChecker ())
     .AddAttribute ("SaveCollisionLossesUnimore", 
                    "Enable collision and propagation lossess saving",
                    BooleanValue (false), 
-                   MakeBooleanAccessor (&NrV2xSpectrumPhy::m_saveCollisionsUniMore),
+                   MakeBooleanAccessor (&NistLteSpectrumPhy::m_saveCollisionsUniMore),
                    MakeBooleanChecker ())
 /*    .AddAttribute ("UEsTotal",
 	           "Total number of UEs",
 		   UintegerValue (3),
-		   MakeUintegerAccessor (&NrV2xSpectrumPhy::m_UEsTotal),
+		   MakeUintegerAccessor (&NistLteSpectrumPhy::m_UEsTotal),
 		   MakeUintegerChecker<uint32_t> ())*/
   ;
 
@@ -381,7 +383,7 @@ NrV2xSpectrumPhy::GetTypeId (void)
 
 
 Ptr<NetDevice>
-NrV2xSpectrumPhy::GetDevice ()
+NistLteSpectrumPhy::GetDevice ()
 {
   //NS_LOG_FUNCTION (this);
   return m_device;
@@ -389,7 +391,7 @@ NrV2xSpectrumPhy::GetDevice ()
 
 
 Ptr<MobilityModel>
-NrV2xSpectrumPhy::GetMobility ()
+NistLteSpectrumPhy::GetMobility ()
 {
   //NS_LOG_FUNCTION (this);
   return m_mobility;
@@ -397,7 +399,7 @@ NrV2xSpectrumPhy::GetMobility ()
 
 
 void
-NrV2xSpectrumPhy::SetDevice (Ptr<NetDevice> d)
+NistLteSpectrumPhy::SetDevice (Ptr<NetDevice> d)
 {
   NS_LOG_FUNCTION (this << d);
   m_device = d;
@@ -405,7 +407,7 @@ NrV2xSpectrumPhy::SetDevice (Ptr<NetDevice> d)
 
 
 void
-NrV2xSpectrumPhy::SetMobility (Ptr<MobilityModel> m)
+NistLteSpectrumPhy::SetMobility (Ptr<MobilityModel> m)
 {
   NS_LOG_FUNCTION (this << m);
   m_mobility = m;
@@ -413,27 +415,27 @@ NrV2xSpectrumPhy::SetMobility (Ptr<MobilityModel> m)
 
 
 void
-NrV2xSpectrumPhy::SetChannel (Ptr<SpectrumChannel> c)
+NistLteSpectrumPhy::SetChannel (Ptr<SpectrumChannel> c)
 {
   NS_LOG_FUNCTION (this << c);
   m_channel = c;
 }
 
 Ptr<SpectrumChannel> 
-NrV2xSpectrumPhy::GetChannel ()
+NistLteSpectrumPhy::GetChannel ()
 {
   return m_channel;
 }
 
 Ptr<const SpectrumModel>
-NrV2xSpectrumPhy::GetRxSpectrumModel () const
+NistLteSpectrumPhy::GetRxSpectrumModel () const
 {
   return m_rxSpectrumModel;
 }
 
 
 void
-NrV2xSpectrumPhy::SetTxPowerSpectralDensity (Ptr<SpectrumValue> txPsd)
+NistLteSpectrumPhy::SetTxPowerSpectralDensity (Ptr<SpectrumValue> txPsd)
 {
   NS_LOG_FUNCTION (this << txPsd);
   NS_ASSERT (txPsd);
@@ -442,7 +444,7 @@ NrV2xSpectrumPhy::SetTxPowerSpectralDensity (Ptr<SpectrumValue> txPsd)
 
 
 void
-NrV2xSpectrumPhy::SetNoisePowerSpectralDensity (Ptr<const SpectrumValue> noisePsd)
+NistLteSpectrumPhy::SetNoisePowerSpectralDensity (Ptr<const SpectrumValue> noisePsd)
 {
   NS_LOG_FUNCTION (this << noisePsd);
   NS_ASSERT (noisePsd);
@@ -454,7 +456,7 @@ NrV2xSpectrumPhy::SetNoisePowerSpectralDensity (Ptr<const SpectrumValue> noisePs
 
   
 void 
-NrV2xSpectrumPhy::Reset ()
+NistLteSpectrumPhy::Reset ()
 {
   NS_LOG_FUNCTION (this);
   m_cellId = 0;
@@ -478,7 +480,7 @@ NrV2xSpectrumPhy::Reset ()
 
 
 void 
-NrV2xSpectrumPhy::ClearExpectedSlTb ()
+NistLteSpectrumPhy::ClearExpectedSlTb ()
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_DEBUG (this << " Expected TBs: " << m_expectedSlTbs.size ());
@@ -488,7 +490,7 @@ NrV2xSpectrumPhy::ClearExpectedSlTb ()
 
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyTxEndCallback (NistLtePhyTxEndCallback c)
+NistLteSpectrumPhy::SetNistLtePhyTxEndCallback (NistLtePhyTxEndCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyTxEndCallback = c;
@@ -496,7 +498,7 @@ NrV2xSpectrumPhy::SetNistLtePhyTxEndCallback (NistLtePhyTxEndCallback c)
 
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxDataEndErrorCallback (NistLtePhyRxDataEndErrorCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxDataEndErrorCallback (NistLtePhyRxDataEndErrorCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxDataEndErrorCallback = c;
@@ -504,14 +506,14 @@ NrV2xSpectrumPhy::SetNistLtePhyRxDataEndErrorCallback (NistLtePhyRxDataEndErrorC
 
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxDataEndOkCallback (NistLtePhyRxDataEndOkCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxDataEndOkCallback (NistLtePhyRxDataEndOkCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxDataEndOkCallback = c;
 }
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxCtrlEndOkCallback (NistLtePhyRxCtrlEndOkCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxCtrlEndOkCallback (NistLtePhyRxCtrlEndOkCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxCtrlEndOkCallback = c;
@@ -520,7 +522,7 @@ NrV2xSpectrumPhy::SetNistLtePhyRxCtrlEndOkCallback (NistLtePhyRxCtrlEndOkCallbac
 // TODO FIXME NEW for V2X
 
 void
-NrV2xSpectrumPhy::SetUnimoreReportRssiCallback (UnimoreReportRssiCallback c)
+NistLteSpectrumPhy::SetUnimoreReportRssiCallback (UnimoreReportRssiCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_RssiCallback = c;
@@ -528,14 +530,14 @@ NrV2xSpectrumPhy::SetUnimoreReportRssiCallback (UnimoreReportRssiCallback c)
 
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxDataStartCallback (NistLtePhyRxDataStartCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxDataStartCallback (NistLtePhyRxDataStartCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxDataStartCallback = c;
 }
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxCtrlEndErrorCallback (NistLtePhyRxCtrlEndErrorCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxCtrlEndErrorCallback (NistLtePhyRxCtrlEndErrorCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxCtrlEndErrorCallback = c;
@@ -543,48 +545,48 @@ NrV2xSpectrumPhy::SetNistLtePhyRxCtrlEndErrorCallback (NistLtePhyRxCtrlEndErrorC
 
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxPssCallback (NistLtePhyRxPssCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxPssCallback (NistLtePhyRxPssCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxPssCallback = c;
 }
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyDlHarqFeedbackCallback (NistLtePhyDlHarqFeedbackCallback c)
+NistLteSpectrumPhy::SetNistLtePhyDlHarqFeedbackCallback (NistLtePhyDlHarqFeedbackCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyDlHarqFeedbackCallback = c;
 }
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyUlHarqFeedbackCallback (NistLtePhyUlHarqFeedbackCallback c)
+NistLteSpectrumPhy::SetNistLtePhyUlHarqFeedbackCallback (NistLtePhyUlHarqFeedbackCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyUlHarqFeedbackCallback = c;
 }
 
 
-Ptr<AntennaModel> NrV2xSpectrumPhy::GetRxAntenna ()
+Ptr<AntennaModel> NistLteSpectrumPhy::GetRxAntenna ()
 {
   return m_antenna;
 }
 
 void
-NrV2xSpectrumPhy::SetAntenna (Ptr<AntennaModel> a)
+NistLteSpectrumPhy::SetAntenna (Ptr<AntennaModel> a)
 {
   NS_LOG_FUNCTION (this << a);
   m_antenna = a;
 }
 
 void
-NrV2xSpectrumPhy::SetState (State newState)
+NistLteSpectrumPhy::SetState (State newState)
 {
   ChangeState (newState);
 }
 
 
 void
-NrV2xSpectrumPhy::ChangeState (State newState)
+NistLteSpectrumPhy::ChangeState (State newState)
 {
   NS_LOG_LOGIC (this << " state: " << m_state << " -> " << newState);
   m_state = newState;
@@ -592,7 +594,7 @@ NrV2xSpectrumPhy::ChangeState (State newState)
 
 
 void
-NrV2xSpectrumPhy::SetHarqPhyModule (Ptr<NistLteHarqPhy> harq)
+NistLteSpectrumPhy::SetHarqPhyModule (Ptr<NistLteHarqPhy> harq)
 {
   m_harqPhyModule = harq;
 }
@@ -601,7 +603,7 @@ NrV2xSpectrumPhy::SetHarqPhyModule (Ptr<NistLteHarqPhy> harq)
 
 
 bool
-NrV2xSpectrumPhy::StartTxDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMessage> > ctrlMsgList, Time duration)
+NistLteSpectrumPhy::StartTxDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMessage> > ctrlMsgList, Time duration)
 {
   NS_LOG_FUNCTION (this << pb);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -648,7 +650,7 @@ NrV2xSpectrumPhy::StartTxDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteCo
         m_ulDataSlCheck = true;
       }
       m_channel->StartTx (txParams);
-      m_endTxEvent = Simulator::Schedule (duration, &NrV2xSpectrumPhy::EndTx, this);
+      m_endTxEvent = Simulator::Schedule (duration, &NistLteSpectrumPhy::EndTx, this);
     }
     return false;
     break;
@@ -661,7 +663,7 @@ NrV2xSpectrumPhy::StartTxDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteCo
 }
 
 bool
-NrV2xSpectrumPhy::StartTxSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMessage> > ctrlMsgList, Time duration, uint8_t groupId)
+NistLteSpectrumPhy::StartTxSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMessage> > ctrlMsgList, Time duration, uint8_t groupId)
 {
   NS_LOG_FUNCTION (this << pb);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -711,7 +713,7 @@ NrV2xSpectrumPhy::StartTxSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLte
  
       //trace  
       
-      m_endTxEvent = Simulator::Schedule (duration, &NrV2xSpectrumPhy::EndTx, this);
+      m_endTxEvent = Simulator::Schedule (duration, &NistLteSpectrumPhy::EndTx, this);
     }
     return false;
     break;
@@ -726,7 +728,7 @@ NrV2xSpectrumPhy::StartTxSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLte
 
 //TODO FIXME NEW for V2X
 bool
-NrV2xSpectrumPhy::StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMessage> > ctrlMsgList, Time duration, uint8_t groupId)
+NistLteSpectrumPhy::StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<NistLteControlMessage> > ctrlMsgList, Time duration, uint8_t groupId)
 {
   NS_LOG_FUNCTION (this << pb);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -776,7 +778,7 @@ NrV2xSpectrumPhy::StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<Nist
 
       //trace  
       
-      m_endTxEvent = Simulator::Schedule (duration, &NrV2xSpectrumPhy::EndTx, this);
+      m_endTxEvent = Simulator::Schedule (duration, &NistLteSpectrumPhy::EndTx, this);
     }
     return false;
     break;
@@ -790,7 +792,7 @@ NrV2xSpectrumPhy::StartTxV2XSlDataFrame (Ptr<PacketBurst> pb, std::list<Ptr<Nist
 }
   
 bool
-NrV2xSpectrumPhy::StartTxDlCtrlFrame (std::list<Ptr<NistLteControlMessage> > ctrlMsgList, bool pss)
+NistLteSpectrumPhy::StartTxDlCtrlFrame (std::list<Ptr<NistLteControlMessage> > ctrlMsgList, bool pss)
 {
   NS_LOG_FUNCTION (this << " PSS " << (uint16_t)pss);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -833,7 +835,7 @@ NrV2xSpectrumPhy::StartTxDlCtrlFrame (std::list<Ptr<NistLteControlMessage> > ctr
       txParams->pss = pss;
       txParams->ctrlMsgList = ctrlMsgList;
       m_channel->StartTx (txParams);
-      m_endTxEvent = Simulator::Schedule (DL_CTRL_DURATION, &NrV2xSpectrumPhy::EndTx, this);
+      m_endTxEvent = Simulator::Schedule (DL_CTRL_DURATION, &NistLteSpectrumPhy::EndTx, this);
     }
     return false;
     break;
@@ -847,7 +849,7 @@ NrV2xSpectrumPhy::StartTxDlCtrlFrame (std::list<Ptr<NistLteControlMessage> > ctr
 
 
 bool
-NrV2xSpectrumPhy::StartTxUlSrsFrame ()
+NistLteSpectrumPhy::StartTxUlSrsFrame ()
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -888,7 +890,7 @@ NrV2xSpectrumPhy::StartTxUlSrsFrame ()
       txParams->psd = m_txPsd;
       txParams->cellId = m_cellId;
       m_channel->StartTx (txParams);
-      m_endTxEvent = Simulator::Schedule (UL_SRS_DURATION, &NrV2xSpectrumPhy::EndTx, this);
+      m_endTxEvent = Simulator::Schedule (UL_SRS_DURATION, &NistLteSpectrumPhy::EndTx, this);
     }
     return false;
     break;
@@ -904,7 +906,7 @@ NrV2xSpectrumPhy::StartTxUlSrsFrame ()
 
 
 void
-NrV2xSpectrumPhy::EndTx ()
+NistLteSpectrumPhy::EndTx ()
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -931,7 +933,7 @@ NrV2xSpectrumPhy::EndTx ()
 
 
 void
-NrV2xSpectrumPhy::StartRx (Ptr<SpectrumSignalParameters> spectrumRxParams)
+NistLteSpectrumPhy::StartRx (Ptr<SpectrumSignalParameters> spectrumRxParams)
 {
   NS_LOG_FUNCTION (this << spectrumRxParams);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -986,8 +988,6 @@ Ptr<NistLteSpectrumSignalParametersV2XSlFrame> lteV2XSlRxParams = DynamicCast<Ni
                     if (*it != 0)
                       {
 
-
-
                         double powerRxW = (*it) * 180000.0;
                         totalPowerW += powerRxW;
                         nRB++;
@@ -1013,17 +1013,19 @@ Ptr<NistLteSpectrumSignalParametersV2XSlFrame> lteV2XSlRxParams = DynamicCast<Ni
       {
         StartRxV2XSlData (lteV2XSlRxParams);
         NS_LOG_INFO("Total power in dBm " << totalPowerDbm);
+       //   std::cin.get();
       }
       else if ((!m_halfDuplexPhy || m_halfDuplexPhy->GetState () == IDLE || !(m_halfDuplexPhy->m_ulDataSlCheck)) && (totalPowerDbm > rxSensitivitydBmPerTB))
       {
         StartRxV2XSlData (lteV2XSlRxParams);
         NS_LOG_INFO ("Total power in dBm " << totalPowerDbm);
+      //    std::cin.get();
       }
       if (totalPowerDbm < rxSensitivitydBmPerTB)
        {
           NS_LOG_INFO ("Signal level below sensitivity");
      //     NS_LOG_UNCOND(GetDevice()->GetNode()->GetId() << " receiving message from " <<lteV2XSlRxParams->nodeId);
-     //     std::cin.get();
+       //   std::cin.get();
           ++m_totalReceptions;
           ++m_lostPKTs[lteV2XSlRxParams->nodeId].propagationLosses;
        }
@@ -1049,7 +1051,7 @@ Ptr<NistLteSpectrumSignalParametersV2XSlFrame> lteV2XSlRxParams = DynamicCast<Ni
 }
 
 void
-NrV2xSpectrumPhy::StartRxData (Ptr<NistLteSpectrumSignalParametersDataFrame> params)
+NistLteSpectrumPhy::StartRxData (Ptr<NistLteSpectrumSignalParametersDataFrame> params)
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -1082,7 +1084,7 @@ NrV2xSpectrumPhy::StartRxData (Ptr<NistLteSpectrumSignalParametersDataFrame> par
                   m_firstRxStart = Simulator::Now ();
                   m_firstRxDuration = params->duration;
                   NS_LOG_LOGIC (this << " scheduling EndRx with delay " << params->duration.GetSeconds () << "s");
-                  m_endRxDataEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxData, this);
+                  m_endRxDataEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxData, this);
                 }
               else
                 {
@@ -1125,7 +1127,7 @@ NrV2xSpectrumPhy::StartRxData (Ptr<NistLteSpectrumSignalParametersDataFrame> par
 }
 
 void
-NrV2xSpectrumPhy::StartRxSlData (Ptr<NistLteSpectrumSignalParametersSlFrame> params)
+NistLteSpectrumPhy::StartRxSlData (Ptr<NistLteSpectrumSignalParametersSlFrame> params)
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -1177,7 +1179,7 @@ NrV2xSpectrumPhy::StartRxSlData (Ptr<NistLteSpectrumSignalParametersSlFrame> par
                             m_firstRxDuration = params->duration;
                             NS_LOG_LOGIC (this << " scheduling EndRxSl with delay " << params->duration.GetSeconds () << "s");
                               
-                            m_endRxDataEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxSlData, this);
+                            m_endRxDataEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxSlData, this);
                           }
                         else
                           {
@@ -1227,7 +1229,7 @@ NrV2xSpectrumPhy::StartRxSlData (Ptr<NistLteSpectrumSignalParametersSlFrame> par
                     m_firstRxStart = Simulator::Now ();
                     m_firstRxDuration = params->duration;
                     NS_LOG_INFO(this << " scheduling EndRxSl with delay " << params->duration.GetSeconds () << "s");
-                    m_endRxDataEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxSlData, this);
+                    m_endRxDataEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxSlData, this);
                   }
                 else
                   {
@@ -1298,7 +1300,7 @@ NrV2xSpectrumPhy::StartRxSlData (Ptr<NistLteSpectrumSignalParametersSlFrame> par
 
 //TODO FIXME NEW for V2X
 void
-NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFrame> params)
+NistLteSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFrame> params)
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC(this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state << "Starting to receive SL V2X Data");
@@ -1347,7 +1349,7 @@ NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFram
                        m_firstRxStart = Simulator::Now ();
                        m_firstRxDuration = params->duration;
                        NS_LOG_LOGIC (this << " scheduling EndRxSl with delay " << params->duration.GetSeconds () << "s");
-                       m_endRxDataEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxV2XSlData, this);
+                       m_endRxDataEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxV2XSlData, this);
                     }
                     else
                     {
@@ -1395,7 +1397,7 @@ NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFram
                  m_firstRxStart = Simulator::Now ();
                  m_firstRxDuration = params->duration;
                  NS_LOG_LOGIC(this << " scheduling EndRxSl with delay " << params->duration.GetSeconds () << "s");
-                 m_endRxDataEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxV2XSlData, this);  
+                 m_endRxDataEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxV2XSlData, this);  
              }
              else
              {
@@ -1440,16 +1442,16 @@ NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFram
                  }
                
              }
-             rssi *= 12;
+             rssi *= 12;  // Twelve subcarriers
              rssi = 10*std::log10(1000*rssi); // in dBm
              AVGrsrpDb /= rbLen;
              double totalPowerDbm = 10*std::log10(1000*totalPowerW);
              uint16_t CSRindex, iterations;
-             iterations = rbLen/12;
+             iterations = rbLen/m_SubCh_Len;
              NS_LOG_DEBUG("UE ID " << GetDevice()->GetNode()->GetId());
              for (uint16_t j = 0; j < iterations; ++j)
              {
-                 CSRindex = rbMap.front()/12 + j;
+                 CSRindex = rbMap.front()/m_SubCh_Len + j;
                  NS_LOG_DEBUG("Callback! CSR index " << CSRindex);
                  if (!m_RssiCallback.IsNull ())
 			m_RssiCallback (rssi, CSRindex, GetDevice()->GetNode()->GetId());
@@ -1458,8 +1460,8 @@ NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFram
              }
              NS_LOG_DEBUG("The total power in Dbm is " << totalPowerDbm << ", RB start " << rbMap.front() << ", number of RBs " << rbLen << ", Average RSRP " << AVGrsrpDb << ", RSSI " << rssi);
              // Fill the vector with the SNR values (without interference)
-             m_expectedSlTbSNR.push_back(std::pair<uint32_t,double> (params->nodeId,std::pow(10,(AVGrsrpDb-(-123.2391))/10) )); //123.3291 is the noise power level (checked)
-             //std::cin.get();
+             m_expectedSlTbSNR.push_back(std::pair<uint32_t,double> (params->nodeId,std::pow(10,(AVGrsrpDb-(-123.2391))/10) )); //123.2391 is the noise power level (checked)
+         //    std::cin.get();
                        
              if (! m_ltePhyRxDataStartCallback.IsNull ())
              {
@@ -1479,7 +1481,7 @@ NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFram
                    rbMapPssch.push_back (i);
                 }
                 AddExpectedTb (sci.m_rnti, sci.m_groupDstId, !((int) sci.m_reTxIndex == 1), sci.m_tbSize, sci.m_mcs, rbMapPssch, 1);
-                NS_LOG_INFO("Added expected Tb from NrV2xSpectrumPhy");
+                NS_LOG_INFO("Added expected Tb from NistLteSpectrumPhy");
              }
              packetInfo.rbBitmap = rbMap;
              sci.m_psschRsrpDb = rsrpDb;
@@ -1517,7 +1519,7 @@ NrV2xSpectrumPhy::StartRxV2XSlData (Ptr<NistLteSpectrumSignalParametersV2XSlFram
 }
 
 void
-NrV2xSpectrumPhy::StartRxCtrl (Ptr<SpectrumSignalParameters> params)
+NistLteSpectrumPhy::StartRxCtrl (Ptr<SpectrumSignalParameters> params)
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -1580,11 +1582,11 @@ NrV2xSpectrumPhy::StartRxCtrl (Ptr<SpectrumSignalParameters> params)
               {
                 // store the DCIs
                 m_rxControlMessageList = lteDlCtrlRxParams->ctrlMsgList;
-                m_endRxDlCtrlEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxDlCtrl, this);
+                m_endRxDlCtrlEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxDlCtrl, this);
               }
             else
               {
-                m_endRxUlSrsEvent = Simulator::Schedule (params->duration, &NrV2xSpectrumPhy::EndRxUlSrs, this);
+                m_endRxUlSrsEvent = Simulator::Schedule (params->duration, &NistLteSpectrumPhy::EndRxUlSrs, this);
               }
           }
           else if (m_state == RX_CTRL)
@@ -1619,28 +1621,28 @@ NrV2xSpectrumPhy::StartRxCtrl (Ptr<SpectrumSignalParameters> params)
 }
 
 void
-NrV2xSpectrumPhy::UpdateSinrPerceived (const SpectrumValue& sinr)
+NistLteSpectrumPhy::UpdateSinrPerceived (const SpectrumValue& sinr)
 {
   NS_LOG_FUNCTION (this << sinr);
   m_sinrPerceived = sinr;
 }
 
 void
-NrV2xSpectrumPhy::UpdateSlSinrPerceived (std::vector <SpectrumValue> sinr)
+NistLteSpectrumPhy::UpdateSlSinrPerceived (std::vector <SpectrumValue> sinr)
 {
   NS_LOG_FUNCTION (this);
   m_slSinrPerceived = sinr;
 }
 
 void
-NrV2xSpectrumPhy::UpdateSlSigPerceived (std::vector <SpectrumValue> signal)
+NistLteSpectrumPhy::UpdateSlSigPerceived (std::vector <SpectrumValue> signal)
 {
   NS_LOG_FUNCTION (this);
   m_slSignalPerceived = signal;
 }
 
 void
-NrV2xSpectrumPhy::UpdateSlIntPerceived (std::vector <SpectrumValue> interference)
+NistLteSpectrumPhy::UpdateSlIntPerceived (std::vector <SpectrumValue> interference)
 {
   NS_LOG_FUNCTION (this);
   m_slInterferencePerceived = interference;
@@ -1648,7 +1650,7 @@ NrV2xSpectrumPhy::UpdateSlIntPerceived (std::vector <SpectrumValue> interference
 }
 
 void
-NrV2xSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t ndi, uint16_t size, uint8_t mcs, std::vector<int> map, uint8_t layer, uint8_t harqId,uint8_t rv,  bool downlink)
+NistLteSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t ndi, uint16_t size, uint8_t mcs, std::vector<int> map, uint8_t layer, uint8_t harqId,uint8_t rv,  bool downlink)
 {
   NS_LOG_FUNCTION (this << " rnti: " << rnti << " NDI " << (uint16_t)ndi << " size " << size << " mcs " << (uint16_t)mcs << " layer " << (uint16_t)layer << " rv " << (uint16_t)rv);
   NistTbId_t tbId;
@@ -1667,7 +1669,7 @@ NrV2xSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t ndi, uint16_t size, uin
 }
 
 void
-NrV2xSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t l1dst, uint8_t ndi, uint16_t size, uint8_t mcs, std::vector<int> map, uint8_t rv)
+NistLteSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t l1dst, uint8_t ndi, uint16_t size, uint8_t mcs, std::vector<int> map, uint8_t rv)
 {
   NS_LOG_INFO (this << " rnti: " << rnti << " group " << (uint16_t) l1dst << " NDI " << (uint16_t)ndi << " size " << size << " mcs " << (uint16_t)mcs << " rv " << (uint16_t)rv);
   NistSlTbId_t tbId;
@@ -1694,7 +1696,7 @@ NrV2xSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t l1dst, uint8_t ndi, uin
 }
 
 void
-NrV2xSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t resPsdch, uint8_t ndi, std::vector<int> map, uint8_t rv)
+NistLteSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t resPsdch, uint8_t ndi, std::vector<int> map, uint8_t rv)
 {
   NS_LOG_FUNCTION (this << " rnti: " << rnti << " resPsdch " << resPsdch << " NDI " << (uint16_t)ndi << " rv " << (uint16_t)rv);
   NistDiscTbId_t tbId;
@@ -1720,7 +1722,7 @@ NrV2xSpectrumPhy::AddExpectedTb (uint16_t  rnti, uint8_t resPsdch, uint8_t ndi, 
 }
 
 void
-NrV2xSpectrumPhy::EndRxData ()
+NistLteSpectrumPhy::EndRxData ()
 {                               
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -1935,7 +1937,7 @@ NrV2xSpectrumPhy::EndRxData ()
 }
 
   void
-NrV2xSpectrumPhy::EndRxSlData ()
+NistLteSpectrumPhy::EndRxSlData ()
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ID:" << GetDevice()->GetNode()->GetId() << " state: " << m_state);
@@ -2734,7 +2736,7 @@ NrV2xSpectrumPhy::EndRxSlData ()
 
 
 void
-NrV2xSpectrumPhy::EndRxV2XSlData ()
+NistLteSpectrumPhy::EndRxV2XSlData ()
 {
   NS_LOG_FUNCTION (this);
   float Plos;
@@ -2854,8 +2856,8 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
   std::map <NistSlTbId_t, uint32_t>::iterator itSinr;
   NS_LOG_DEBUG("Evaluating the SCI");
   // I can decode only one SCI at a time. Sort them and take only the one with the best SINR
-  uint16_t N_subCh = 4;
-  uint16_t SubCh_Len = 12;
+  uint16_t N_subCh = m_NsubCh;
+  uint16_t SubCh_Len = m_SubCh_Len;
   for (uint16_t i = 0; i < N_subCh; i++) 
   {
     tmpSINR = 0;
@@ -2951,6 +2953,7 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
 
 
   itTb = m_expectedSlTbs.begin ();
+  NS_LOG_DEBUG("Evaluating the SNR only, for the propagation losses");
   while (itTb!=m_expectedSlTbs.end ()) 
   {
     NS_LOG_DEBUG("Tx node ID " << itTb->first.m_rnti << " Corrupted? " <<  itTb->second.corrupt << " Collided PSSCH? " << itTb->second.collidedPssch);
@@ -2989,7 +2992,7 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
         if (m_expectedSlTbSNR[i].first == (*itTb).first.m_rnti)
         SNR = m_expectedSlTbSNR[i].second;
       }
-      NS_LOG_DEBUG("SNR value is " << SNR);
+      NS_LOG_DEBUG("SNR value is " << SNR << " in dB " << 10*std::log10(SNR));
       NistTbErrorStats_t tbStats;
       NistTbErrorStats_t tbStatsPSCCH1;
       NistTbErrorStats_t tbStatsPSCCH2;
@@ -3041,6 +3044,7 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
   //expectedSlTbs_t::iterator itTb = m_expectedSlTbs.begin ();
   itTb = m_expectedSlTbs.begin ();  //Already declared in the previous block
 //  std::map <NistSlTbId_t, uint32_t>::iterator itSinr;
+  NS_LOG_DEBUG("Evaluating the SINR");
   while (itTb!=m_expectedSlTbs.end ())
   {
       itSinr = expectedTbToSinrIndex.find ((*itTb).first);
@@ -3080,6 +3084,7 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
 		Plos = std::max(0.0,0.54 - 0.001*(Distance-475));
 	  }
 	  LOS = m_random->GetValue () > Plos ? false : true;
+     //     LOS = true;
           NS_LOG_DEBUG(this << " TX Node: " << TxNode->GetId() << " Position X = " << posTX.x << " Position Y = " << posTX.y << " Tx-Rx Distance " << Distance << " P(LOS) " << Plos << " LOS " << LOS);
 
 	//  std::cin.get();
@@ -3167,7 +3172,7 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
                     if (m_expectedSlTbSNR[i].first == (*itTb).first.m_rnti)
                        SNR = m_expectedSlTbSNR[i].second;
                  }
-                 NS_LOG_DEBUG("SNR value is " << SNR);
+                 NS_LOG_DEBUG("SNR value is " << SNR << " in dB " << 10*std::log10(SNR));
                  NistTbErrorStats_t tbStats;
                  NistTbErrorStats_t tbStatsPSCCH1;
                  NistTbErrorStats_t tbStatsPSCCH2;
@@ -3220,7 +3225,6 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
                  }
                  // If it was not corrupted by the propagation (using the original SNR) and if there is some interference to evaluate
                  double SNR_new = 10*std::log10(GetLowestSinr (m_slSinrPerceived[(*itSinr).second], (*itTb).second.rbBitmap) );
-
                  if ( (!itTb->second.collidedPssch) && (!itTb->second.corrupt) && ( abs(SNR_new-10*std::log10(SNR)) > 0.001 ) )
                  {
                    if (LOS)
@@ -4016,7 +4020,7 @@ NrV2xSpectrumPhy::EndRxV2XSlData ()
 }
 
 void
-NrV2xSpectrumPhy::EndRxDlCtrl ()
+NistLteSpectrumPhy::EndRxDlCtrl ()
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " state: " << m_state);
@@ -4065,7 +4069,7 @@ NrV2xSpectrumPhy::EndRxDlCtrl ()
 }
   
 void
-NrV2xSpectrumPhy::EndRxUlSrs ()
+NistLteSpectrumPhy::EndRxUlSrs ()
 {
   NS_ASSERT (m_state == RX_CTRL);
   ChangeState (IDLE);
@@ -4074,80 +4078,80 @@ NrV2xSpectrumPhy::EndRxUlSrs ()
 }
 
 void 
-NrV2xSpectrumPhy::SetCellId (uint16_t cellId)
+NistLteSpectrumPhy::SetCellId (uint16_t cellId)
 {
   m_cellId = cellId;
 }
 
 void 
-NrV2xSpectrumPhy::AddL1GroupId (uint8_t groupId)
+NistLteSpectrumPhy::AddL1GroupId (uint8_t groupId)
 {
   NS_LOG_FUNCTION (this << (uint16_t) groupId);
   m_l1GroupIds.insert(groupId);
 }
 
 void 
-NrV2xSpectrumPhy::RemoveL1GroupId (uint8_t groupId)
+NistLteSpectrumPhy::RemoveL1GroupId (uint8_t groupId)
 {
   m_l1GroupIds.erase (groupId);
 }
 
 void
-NrV2xSpectrumPhy::AddRsPowerChunkProcessor (Ptr<NistLteChunkProcessor> p)
+NistLteSpectrumPhy::AddRsPowerChunkProcessor (Ptr<NistLteChunkProcessor> p)
 {
   m_interferenceCtrl->AddRsPowerChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddDataPowerChunkProcessor (Ptr<NistLteChunkProcessor> p)
+NistLteSpectrumPhy::AddDataPowerChunkProcessor (Ptr<NistLteChunkProcessor> p)
 {
   m_interferenceData->AddRsPowerChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddDataSinrChunkProcessor (Ptr<NistLteChunkProcessor> p)
+NistLteSpectrumPhy::AddDataSinrChunkProcessor (Ptr<NistLteChunkProcessor> p)
 {
   m_interferenceData->AddSinrChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddInterferenceCtrlChunkProcessor (Ptr<NistLteChunkProcessor> p)
+NistLteSpectrumPhy::AddInterferenceCtrlChunkProcessor (Ptr<NistLteChunkProcessor> p)
 {
   m_interferenceCtrl->AddInterferenceChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddInterferenceDataChunkProcessor (Ptr<NistLteChunkProcessor> p)
+NistLteSpectrumPhy::AddInterferenceDataChunkProcessor (Ptr<NistLteChunkProcessor> p)
 {
   m_interferenceData->AddInterferenceChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddCtrlSinrChunkProcessor (Ptr<NistLteChunkProcessor> p)
+NistLteSpectrumPhy::AddCtrlSinrChunkProcessor (Ptr<NistLteChunkProcessor> p)
 {
   m_interferenceCtrl->AddSinrChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddSlSinrChunkProcessor (Ptr<NistLteSlChunkProcessor> p)
+NistLteSpectrumPhy::AddSlSinrChunkProcessor (Ptr<NistLteSlChunkProcessor> p)
 {
   m_interferenceSl->AddSinrChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddSlSignalChunkProcessor (Ptr<NistLteSlChunkProcessor> p)
+NistLteSpectrumPhy::AddSlSignalChunkProcessor (Ptr<NistLteSlChunkProcessor> p)
 {
   m_interferenceSl->AddRsPowerChunkProcessor (p);
 }
 
 void
-NrV2xSpectrumPhy::AddSlInterferenceChunkProcessor (Ptr<NistLteSlChunkProcessor> p)
+NistLteSpectrumPhy::AddSlInterferenceChunkProcessor (Ptr<NistLteSlChunkProcessor> p)
 {
   m_interferenceSl->AddInterferenceChunkProcessor (p);
 }
 
 void 
-NrV2xSpectrumPhy::SetTransmissionMode (uint8_t txMode)
+NistLteSpectrumPhy::SetTransmissionMode (uint8_t txMode)
 {
   NS_LOG_FUNCTION (this << (uint16_t) txMode);
   NS_ASSERT_MSG (txMode < m_txModeGain.size (), "TransmissionMode not available: 1.." << m_txModeGain.size ());
@@ -4157,7 +4161,7 @@ NrV2xSpectrumPhy::SetTransmissionMode (uint8_t txMode)
 
 
 void 
-NrV2xSpectrumPhy::SetTxModeGain (uint8_t txMode, double gain)
+NistLteSpectrumPhy::SetTxModeGain (uint8_t txMode, double gain)
 {
   NS_LOG_FUNCTION (this << " txmode " << (uint16_t)txMode << " gain " << gain);
   // convert to linear
@@ -4183,7 +4187,7 @@ NrV2xSpectrumPhy::SetTxModeGain (uint8_t txMode, double gain)
 }
 
 int64_t
-NrV2xSpectrumPhy::AssignStreams (int64_t stream)
+NistLteSpectrumPhy::AssignStreams (int64_t stream)
 {
   NS_LOG_FUNCTION (this << stream);
   m_random->SetStream (stream);
@@ -4191,7 +4195,7 @@ NrV2xSpectrumPhy::AssignStreams (int64_t stream)
 }
 
 double 
-NrV2xSpectrumPhy::GetLowestSinr (const SpectrumValue& sinr, const std::vector<int>& map)
+NistLteSpectrumPhy::GetLowestSinr (const SpectrumValue& sinr, const std::vector<int>& map)
 {
   SpectrumValue sinrCopy = sinr;
   double sinrLin = sinrCopy[map.at (0)];
@@ -4207,7 +4211,7 @@ NrV2xSpectrumPhy::GetLowestSinr (const SpectrumValue& sinr, const std::vector<in
 }
 
 double 
-NrV2xSpectrumPhy::GetMeanSinr (const SpectrumValue& sinr, const std::vector<int>& map)
+NistLteSpectrumPhy::GetMeanSinr (const SpectrumValue& sinr, const std::vector<int>& map)
 {
   SpectrumValue sinrCopy = sinr;
   double sinrLin = 0;
@@ -4215,12 +4219,12 @@ NrV2xSpectrumPhy::GetMeanSinr (const SpectrumValue& sinr, const std::vector<int>
     { 
       sinrLin += sinrCopy[map.at (i)];
     }
-  NS_LOG_DEBUG("SINR = " << sinrLin << " AVG SINR " << sinrLin / map.size());
+  NS_LOG_DEBUG("SINR = " << sinrLin << " AVG SINR " << sinrLin / map.size() << " AVG SINR in dB " << 10*std::log10(sinrLin / map.size()) );
   return sinrLin / map.size();
 }
 
 double 
-NrV2xSpectrumPhy::GetMeanSinrPSCCH (const SpectrumValue& sinr, const std::vector<int>& map, int LenPSCCH)
+NistLteSpectrumPhy::GetMeanSinrPSCCH (const SpectrumValue& sinr, const std::vector<int>& map, int LenPSCCH)
 {
   SpectrumValue sinrCopy = sinr;
 //  NS_LOG_DEBUG("Sinr = " << sinr << " Length = " << LenPSCCH);
@@ -4237,7 +4241,7 @@ NrV2xSpectrumPhy::GetMeanSinrPSCCH (const SpectrumValue& sinr, const std::vector
 
 
 int
-NrV2xSpectrumPhy::UnimoreCompareSinrPSSCH (const SpectrumValue& first_sinr, const std::vector<int>& first_map,const SpectrumValue& second_sinr, const std::vector<int>& second_map)
+NistLteSpectrumPhy::UnimoreCompareSinrPSSCH (const SpectrumValue& first_sinr, const std::vector<int>& first_map,const SpectrumValue& second_sinr, const std::vector<int>& second_map)
 {
   SpectrumValue sinrCopy_first = first_sinr;
   SpectrumValue sinrCopy_second = second_sinr;
@@ -4276,28 +4280,28 @@ NrV2xSpectrumPhy::UnimoreCompareSinrPSSCH (const SpectrumValue& first_sinr, cons
 }
 
 
-NrV2xSpectrumPhy::State
-NrV2xSpectrumPhy::GetState ()
+NistLteSpectrumPhy::State
+NistLteSpectrumPhy::GetState ()
 {
   return m_state;
 }
 
 void
-NrV2xSpectrumPhy::SetSlssid (uint64_t slssid)
+NistLteSpectrumPhy::SetSlssid (uint64_t slssid)
 {
   NS_LOG_FUNCTION (this);
   m_slssId = slssid;
 }
 
 void
-NrV2xSpectrumPhy::SetNistLtePhyRxSlssCallback (NistLtePhyRxSlssCallback c)
+NistLteSpectrumPhy::SetNistLtePhyRxSlssCallback (NistLtePhyRxSlssCallback c)
 {
   NS_LOG_FUNCTION (this);
   m_ltePhyRxSlssCallback = c;
 }
 
 void 
-NrV2xSpectrumPhy::SetRxPool (Ptr<SidelinkDiscResourcePool> newpool)
+NistLteSpectrumPhy::SetRxPool (Ptr<SidelinkDiscResourcePool> newpool)
 {
   m_discRxPools.push_back (newpool);
 }
@@ -4305,25 +4309,25 @@ NrV2xSpectrumPhy::SetRxPool (Ptr<SidelinkDiscResourcePool> newpool)
 // NEW: Set the receiver sensitivity
 
 void 
-NrV2xSpectrumPhy::SetRxSensitivity (double sensitivity)
+NistLteSpectrumPhy::SetRxSensitivity (double sensitivity)
 {
   m_rxSensitivity = sensitivity;
 }
 
 void 
-NrV2xSpectrumPhy::AddDiscTxApps (std::list<uint32_t> apps)
+NistLteSpectrumPhy::AddDiscTxApps (std::list<uint32_t> apps)
 {
     m_discTxApps = apps;
 }
 
 void 
-NrV2xSpectrumPhy::AddDiscRxApps (std::list<uint32_t> apps)
+NistLteSpectrumPhy::AddDiscRxApps (std::list<uint32_t> apps)
 {
   m_discRxApps = apps;
 }
 
 bool 
-NrV2xSpectrumPhy::FilterRxApps (NistSlDiscMsg disc)
+NistLteSpectrumPhy::FilterRxApps (NistSlDiscMsg disc)
 {
   NS_LOG_FUNCTION (this << disc.m_proSeAppCode);
   bool exist = false;
@@ -4340,7 +4344,7 @@ NrV2xSpectrumPhy::FilterRxApps (NistSlDiscMsg disc)
 }
 
 void
-NrV2xSpectrumPhy::SetDiscNumRetx (uint8_t retx)
+NistLteSpectrumPhy::SetDiscNumRetx (uint8_t retx)
 {
   NS_LOG_FUNCTION (this << retx);
   m_harqPhyModule->SetDiscNumRetx (retx);

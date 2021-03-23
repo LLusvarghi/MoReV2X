@@ -36,11 +36,11 @@
 
 namespace ns3 {
 
-NS_LOG_COMPONENT_DEFINE ("NrV2xRlcUm");
+NS_LOG_COMPONENT_DEFINE ("NistLteRlcUm");
 
-NS_OBJECT_ENSURE_REGISTERED (NrV2xRlcUm);
+NS_OBJECT_ENSURE_REGISTERED (NistLteRlcUm);
 
-NrV2xRlcUm::NrV2xRlcUm ()
+NistLteRlcUm::NistLteRlcUm ()
   : m_maxTxBufferSize (10 * 1024),
     m_txBufferSize (0),
     m_sequenceNumber (0),
@@ -54,28 +54,28 @@ NrV2xRlcUm::NrV2xRlcUm ()
   m_reassemblingState = WAITING_S0_FULL;
 }
 
-NrV2xRlcUm::~NrV2xRlcUm ()
+NistLteRlcUm::~NistLteRlcUm ()
 {
   NS_LOG_FUNCTION (this);
 }
 
 TypeId
-NrV2xRlcUm::GetTypeId (void)
+NistLteRlcUm::GetTypeId (void)
 {
-  static TypeId tid = TypeId ("ns3::NrV2xRlcUm")
+  static TypeId tid = TypeId ("ns3::NistLteRlcUm")
     .SetParent<NistLteRlc> ()
-    .AddConstructor<NrV2xRlcUm> ()
+    .AddConstructor<NistLteRlcUm> ()
     .AddAttribute ("MaxTxBufferSize",
                    "Maximum Size of the Transmission Buffer (in Bytes)",
                    UintegerValue (10 * 1024),
-                   MakeUintegerAccessor (&NrV2xRlcUm::m_maxTxBufferSize),
+                   MakeUintegerAccessor (&NistLteRlcUm::m_maxTxBufferSize),
                    MakeUintegerChecker<uint32_t> ())
     ;
   return tid;
 }
 
 void
-NrV2xRlcUm::DoDispose ()
+NistLteRlcUm::DoDispose ()
 {
   NS_LOG_FUNCTION (this);
   m_reorderingTimer.Cancel ();
@@ -89,7 +89,7 @@ NrV2xRlcUm::DoDispose ()
  */
 
 void
-NrV2xRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
+NistLteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
 {
   NS_LOG_FUNCTION (this << m_rnti << (uint32_t) m_lcid << p->GetSize ());
 
@@ -134,7 +134,7 @@ NrV2xRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
  */
 
 void
-NrV2xRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harqId)
+NistLteRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harqId)
 {
   NS_LOG_FUNCTION (this << m_rnti << (uint32_t) m_lcid << bytes);
 
@@ -412,18 +412,18 @@ NrV2xRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harqId
   if (! m_txBuffer.empty ())
     {
       m_rbsTimer.Cancel ();
-      m_rbsTimer = Simulator::Schedule (MilliSeconds (10), &NrV2xRlcUm::ExpireRbsTimer, this);
+      m_rbsTimer = Simulator::Schedule (MilliSeconds (10), &NistLteRlcUm::ExpireRbsTimer, this);
     }
 }
 
 void
-NrV2xRlcUm::DoNotifyHarqDeliveryFailure ()
+NistLteRlcUm::DoNotifyHarqDeliveryFailure ()
 {
   NS_LOG_FUNCTION (this);
 }
 
 void
-NrV2xRlcUm::DoReceivePdu (Ptr<Packet> p)
+NistLteRlcUm::DoReceivePdu (Ptr<Packet> p)
 {
   NS_LOG_FUNCTION (this << m_rnti << (uint32_t) m_lcid << p->GetSize ());
   // Receiver timestamp
@@ -618,7 +618,7 @@ std::map <uint16_t, Ptr<Packet> >::iterator it;
           NS_LOG_LOGIC ("VR(UH) > VR(UR)");
           NS_LOG_LOGIC ("Start reordering timer");
           m_reorderingTimer = Simulator::Schedule (Time ("0.1s"),
-                                                   &NrV2xRlcUm::ExpireReorderingTimer ,this);
+                                                   &NistLteRlcUm::ExpireReorderingTimer ,this);
           m_vrUx = m_vrUh;
           NS_LOG_LOGIC ("New VR(UX) = " << m_vrUx);
         }
@@ -628,7 +628,7 @@ std::map <uint16_t, Ptr<Packet> >::iterator it;
 
 
 bool
-NrV2xRlcUm::IsInsideReorderingWindow (NistSequenceNumber10 seqNumber)
+NistLteRlcUm::IsInsideReorderingWindow (NistSequenceNumber10 seqNumber)
 {
   NS_LOG_FUNCTION (this << seqNumber);
   NS_LOG_LOGIC ("Reordering Window: " <<
@@ -651,7 +651,7 @@ NrV2xRlcUm::IsInsideReorderingWindow (NistSequenceNumber10 seqNumber)
 
 
 void
-NrV2xRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
+NistLteRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
 {
   NistLteRlcHeader rlcHeader;
   packet->RemoveHeader (rlcHeader);
@@ -1118,7 +1118,7 @@ NrV2xRlcUm::ReassembleAndDeliver (Ptr<Packet> packet)
 
 
 void
-NrV2xRlcUm::ReassembleOutsideWindow (void)
+NistLteRlcUm::ReassembleOutsideWindow (void)
 {
   NS_LOG_LOGIC ("Reassemble Outside Window, Now: " << Simulator::Now().GetSeconds() << "s"); //LOGIC
 
@@ -1145,7 +1145,7 @@ NrV2xRlcUm::ReassembleOutsideWindow (void)
 }
 
 void
-NrV2xRlcUm::ReassembleSnInterval (NistSequenceNumber10 lowSeqNumber, NistSequenceNumber10 highSeqNumber)
+NistLteRlcUm::ReassembleSnInterval (NistSequenceNumber10 lowSeqNumber, NistSequenceNumber10 highSeqNumber)
 {
   NS_LOG_LOGIC ("Reassemble SN between " << lowSeqNumber << " and " << highSeqNumber << ", Now: " << Simulator::Now().GetSeconds() << "s");
 
@@ -1180,7 +1180,7 @@ NrV2xRlcUm::ReassembleSnInterval (NistSequenceNumber10 lowSeqNumber, NistSequenc
 
 
 void
-NrV2xRlcUm::DoReportBufferNistStatus (void)
+NistLteRlcUm::DoReportBufferNistStatus (void)
 {
   Time holDelay (0);
   uint32_t queueSize = 0;
@@ -1243,7 +1243,7 @@ NrV2xRlcUm::DoReportBufferNistStatus (void)
 
 
 void
-NrV2xRlcUm::ExpireReorderingTimer (void)
+NistLteRlcUm::ExpireReorderingTimer (void)
 {
   NS_LOG_FUNCTION (this << m_rnti << (uint32_t) m_lcid);
   NS_LOG_LOGIC ("Reordering timer has expired");
@@ -1274,7 +1274,7 @@ NrV2xRlcUm::ExpireReorderingTimer (void)
     {
       NS_LOG_LOGIC ("Start reordering timer");
       m_reorderingTimer = Simulator::Schedule (Time ("0.1s"),
-                                               &NrV2xRlcUm::ExpireReorderingTimer, this);
+                                               &NistLteRlcUm::ExpireReorderingTimer, this);
       m_vrUx = m_vrUh;
       NS_LOG_LOGIC ("New VR(UX) = " << m_vrUx);
     }
@@ -1282,14 +1282,14 @@ NrV2xRlcUm::ExpireReorderingTimer (void)
 
 
 void
-NrV2xRlcUm::ExpireRbsTimer (void)
+NistLteRlcUm::ExpireRbsTimer (void)
 {
   NS_LOG_LOGIC ("RBS Timer expires");
 
   if (! m_txBuffer.empty ())
     {
       DoReportBufferNistStatus ();
-      m_rbsTimer = Simulator::Schedule (MilliSeconds (10), &NrV2xRlcUm::ExpireRbsTimer, this);
+      m_rbsTimer = Simulator::Schedule (MilliSeconds (10), &NistLteRlcUm::ExpireRbsTimer, this);
     }
 }
 

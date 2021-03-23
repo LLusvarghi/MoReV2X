@@ -25,7 +25,7 @@
 #include "ns3/callback.h"
 #include "ns3/node.h"
 #include "ns3/packet.h"
-#include "nr-v2x-net-device.h"
+#include "nist-lte-net-device.h"
 #include "ns3/packet-burst.h"
 #include "ns3/uinteger.h"
 #include "ns3/trace-source-accessor.h"
@@ -46,49 +46,49 @@
 
 namespace ns3 {
 
-NS_LOG_COMPONENT_DEFINE ("NrV2xUeNetDevice");
+NS_LOG_COMPONENT_DEFINE ("NistLteUeNetDevice");
 
-NS_OBJECT_ENSURE_REGISTERED (NrV2xUeNetDevice);
+NS_OBJECT_ENSURE_REGISTERED ( NistLteUeNetDevice);
 
 
 TypeId NistLteUeNetDevice::GetTypeId (void)
 {
   static TypeId
     tid =
-    TypeId ("ns3::NrV2xUeNetDevice")
-    .SetParent<NrV2xUeNetDevice> ()
-    .AddConstructor<NrV2xUeNetDevice> ()
+    TypeId ("ns3::NistLteUeNetDevice")
+    .SetParent<NistLteNetDevice> ()
+    .AddConstructor<NistLteUeNetDevice> ()
     .AddAttribute ("NistEpcUeNas",
                    "The NAS associated to this UeNetDevice",
                    PointerValue (),
-                   MakePointerAccessor (&NrV2xUeNetDevice::m_nas),
+                   MakePointerAccessor (&NistLteUeNetDevice::m_nas),
                    MakePointerChecker <NistEpcUeNas> ())
     .AddAttribute ("NistLteUeRrc",
                    "The RRC associated to this UeNetDevice",
                    PointerValue (),
-                   MakePointerAccessor (&NrV2xUeNetDevice::m_rrc),
+                   MakePointerAccessor (&NistLteUeNetDevice::m_rrc),
                    MakePointerChecker <NistLteUeRrc> ())
-    .AddAttribute ("NrV2xUeMac",
+    .AddAttribute ("NistLteUeMac",
                    "The MAC associated to this UeNetDevice",
                    PointerValue (),
-                   MakePointerAccessor (&NrV2xUeNetDevice::m_mac),
-                   MakePointerChecker <NrV2xUeMac> ())
-    .AddAttribute ("NrV2xUePhy",
+                   MakePointerAccessor (&NistLteUeNetDevice::m_mac),
+                   MakePointerChecker <NistLteUeMac> ())
+    .AddAttribute ("NistLteUePhy",
                    "The PHY associated to this UeNetDevice",
                    PointerValue (),
-                   MakePointerAccessor (&NrV2xUeNetDevice::m_phy),
-                   MakePointerChecker <NrV2xUePhy> ())
+                   MakePointerAccessor (&NistLteUeNetDevice::m_phy),
+                   MakePointerChecker <NistLteUePhy> ())
     .AddAttribute ("Imsi",
                    "International Mobile Subscriber Identity assigned to this UE",
                    UintegerValue (0),
-                   MakeUintegerAccessor (&NrV2xUeNetDevice::m_imsi),
+                   MakeUintegerAccessor (&NistLteUeNetDevice::m_imsi),
                    MakeUintegerChecker<uint64_t> ())
     .AddAttribute ("DlEarfcn",
                    "Downlink E-UTRA Absolute Radio Frequency Channel Number (EARFCN) "
                    "as per 3GPP 36.101 Section 5.7.3. ",
                    UintegerValue (100),
-                   MakeUintegerAccessor (&NrV2xUeNetDevice::SetDlEarfcn,
-                                         &NrV2xUeNetDevice::GetDlEarfcn),
+                   MakeUintegerAccessor (&NistLteUeNetDevice::SetDlEarfcn,
+                                         &NistLteUeNetDevice::GetDlEarfcn),
                    MakeUintegerChecker<uint16_t> (0, 6149))
     .AddAttribute ("CsgId",
                    "The Closed Subscriber Group (CSG) identity that this UE is associated with, "
@@ -96,8 +96,8 @@ TypeId NistLteUeNetDevice::GetTypeId (void)
                    "This restriction only applies to initial cell selection and EPC-enabled simulation. "
                    "This does not revoke the UE's access to non-CSG cells. ",
                    UintegerValue (0),
-                   MakeUintegerAccessor (&NrV2xUeNetDevice::SetCsgId,
-                                         &NrV2xUeNetDevice::GetCsgId),
+                   MakeUintegerAccessor (&NistLteUeNetDevice::SetCsgId,
+                                         &NistLteUeNetDevice::GetCsgId),
                    MakeUintegerChecker<uint32_t> ())
   ;
 
@@ -105,19 +105,19 @@ TypeId NistLteUeNetDevice::GetTypeId (void)
 }
 
 
-NrV2xUeNetDevice::NrV2xUeNetDevice (void)
+NistLteUeNetDevice::NistLteUeNetDevice (void)
   : m_isConstructed (false)
 {
   NS_LOG_FUNCTION (this);
 }
 
-NrV2xUeNetDevice::~NrV2xUeNetDevice (void)
+NistLteUeNetDevice::~NistLteUeNetDevice (void)
 {
   NS_LOG_FUNCTION (this);
 }
 
 void
-NrV2xUeNetDevice::DoDispose (void)
+NistLteUeNetDevice::DoDispose (void)
 {
   NS_LOG_FUNCTION (this);
   m_targetEnb = 0;
@@ -133,7 +133,7 @@ NrV2xUeNetDevice::DoDispose (void)
 }
 
 void
-NrV2xUeNetDevice::UpdateConfig (void)
+NistLteUeNetDevice::UpdateConfig (void)
 {
   NS_LOG_FUNCTION (this);
 
@@ -157,7 +157,7 @@ NrV2xUeNetDevice::UpdateConfig (void)
 
 
 Ptr<NistLteUeMac>
-NrV2xUeNetDevice::GetMac (void) const
+NistLteUeNetDevice::GetMac (void) const
 {
   NS_LOG_FUNCTION (this);
   return m_mac;
@@ -165,7 +165,7 @@ NrV2xUeNetDevice::GetMac (void) const
 
 
 Ptr<NistLteUeRrc>
-NrV2xUeNetDevice::GetRrc (void) const
+NistLteUeNetDevice::GetRrc (void) const
 {
   NS_LOG_FUNCTION (this);
   return m_rrc;
@@ -173,49 +173,49 @@ NrV2xUeNetDevice::GetRrc (void) const
 
 
 Ptr<NistLteUePhy>
-NrV2xUeNetDevice::GetPhy (void) const
+NistLteUeNetDevice::GetPhy (void) const
 {
   NS_LOG_FUNCTION (this);
   return m_phy;
 }
 
 Ptr<NistEpcUeNas>
-NrV2xUeNetDevice::GetNas (void) const
+NistLteUeNetDevice::GetNas (void) const
 {
   NS_LOG_FUNCTION (this);
   return m_nas;
 }
 
 uint64_t
-NrV2xUeNetDevice::GetImsi () const
+NistLteUeNetDevice::GetImsi () const
 {
   NS_LOG_FUNCTION (this);
   return m_imsi;
 }
 
 uint16_t
-NrV2xUeNetDevice::GetDlEarfcn () const
+NistLteUeNetDevice::GetDlEarfcn () const
 {
   NS_LOG_FUNCTION (this);
   return m_dlEarfcn;
 }
 
 void
-NrV2xUeNetDevice::SetDlEarfcn (uint16_t earfcn)
+NistLteUeNetDevice::SetDlEarfcn (uint16_t earfcn)
 {
   NS_LOG_FUNCTION (this << earfcn);
   m_dlEarfcn = earfcn;
 }
 
 uint32_t
-NrV2xUeNetDevice::GetCsgId () const
+NistLteUeNetDevice::GetCsgId () const
 {
   NS_LOG_FUNCTION (this);
   return m_csgId;
 }
 
 void
-NrV2xUeNetDevice::SetCsgId (uint32_t csgId)
+NistLteUeNetDevice::SetCsgId (uint32_t csgId)
 {
   NS_LOG_FUNCTION (this << csgId);
   m_csgId = csgId;
@@ -223,7 +223,7 @@ NrV2xUeNetDevice::SetCsgId (uint32_t csgId)
 }
 
 void
-NrV2xUeNetDevice::SetTargetEnb (Ptr<NistLteEnbNetDevice> enb)
+NistLteUeNetDevice::SetTargetEnb (Ptr<NistLteEnbNetDevice> enb)
 {
   NS_LOG_FUNCTION (this << enb);
   m_targetEnb = enb;
@@ -231,14 +231,14 @@ NrV2xUeNetDevice::SetTargetEnb (Ptr<NistLteEnbNetDevice> enb)
 
 
 Ptr<NistLteEnbNetDevice>
-NrV2xUeNetDevice::GetTargetEnb (void)
+NistLteUeNetDevice::GetTargetEnb (void)
 {
   NS_LOG_FUNCTION (this);
   return m_targetEnb;
 }
 
 void 
-NrV2xUeNetDevice::DoInitialize (void)
+NistLteUeNetDevice::DoInitialize (void)
 {
   NS_LOG_FUNCTION (this);
   m_isConstructed = true;
@@ -249,7 +249,7 @@ NrV2xUeNetDevice::DoInitialize (void)
 }
 
 bool
-NrV2xUeNetDevice::Send (Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber)
+NistLteUeNetDevice::Send (Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber)
 {
   NS_LOG_FUNCTION (this << dest << protocolNumber);
   if (protocolNumber != Ipv4L3Protocol::PROT_NUMBER)

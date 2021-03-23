@@ -19,8 +19,6 @@
  *         Marco Miozzo <marco.miozzo@cttc.es>
  *         Nicola Baldo <nbaldo@cttc.es>
  * Modified by: NIST
- * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
- *
  */
 
 #include <ns3/object-factory.h>
@@ -30,14 +28,14 @@
 #include <ns3/simulator.h>
 #include <ns3/double.h>
 #include <list>
-#include "nist-lte-ue-phy.h"
+#include "nr-v2x-ue-phy.h"
 #include "nist-lte-enb-phy.h"
 #include "nist-lte-net-device.h"
-#include "nist-lte-ue-net-device.h"
+#include "nr-v2x-ue-net-device.h"
 #include "nist-lte-enb-net-device.h"
 #include "nist-lte-spectrum-value-helper.h"
 #include "nist-lte-amc.h"
-#include "nist-lte-ue-mac.h"
+#include "nr-v2x-ue-mac.h"
 #include "nist-ff-mac-common.h"
 #include "nist-lte-chunk-processor.h"
 #include <ns3/nist-lte-common.h>
@@ -994,31 +992,40 @@ NistLteUePhy::UnimoreReceivedRssi (double rssi, uint16_t CSRindex, uint16_t ID)
      m_RSSIlist.push_back(tmp);
   }
 
-  // removing old elements
-  NS_LOG_DEBUG("Current frame " << GLOBAL_frameNo << " and subframe " << GLOBAL_subframeNo);
-  for(std::list<RSSImeas>::iterator it = m_RSSIlist.begin(); it != m_RSSIlist.end(); ++it) 
+  // Removing elements older than 100ms
+  if (Simulator::Now ().GetSeconds () > 0.5)
   {
-     if (Simulator::Now ().GetSeconds () > 0.5)
-     {
-        NS_LOG_DEBUG("List frame " << it->m_timeAxis.frameNo << " and subframe " << it->m_timeAxis.subframeNo); 
-        if (GLOBAL_frameNo < 11) // handle the 1024 crossover, with the frame number restart
-        {
-           if ( !(it->m_timeAxis.frameNo >= 1 && it->m_timeAxis.frameNo <= 10) && (it->m_timeAxis.frameNo < (1025-(11-GLOBAL_frameNo))) || (it->m_timeAxis.frameNo == (1025-(11-GLOBAL_frameNo)) && it->m_timeAxis.subframeNo < GLOBAL_subframeNo) )
-           {   
-               m_RSSIlist.erase(it);
-               --it;
-           }
+    for(std::list<RSSImeas>::iterator it_remove = m_RSSIlist.begin(); it_remove != m_RSSIlist.end(); ++it_remove) 
+    {
+     /* NS_LOG_DEBUG("Printing the list (for)");
+      for(std::list<RSSImeas>::iterator it_print = m_RSSIlist.begin(); it_print != m_RSSIlist.end(); ++it_print) 
+      {
+        NS_LOG_DEBUG("ID " << it_print->m_ID << ", frameNo " << it_print->m_timeAxis.frameNo << ", subframeNo " << it_print->m_timeAxis.subframeNo << ", CSR index " << it_print->m_CSRindex << ", avg RSSI " << it_print->m_rssi);
+      }*/
+
+   //   NS_LOG_DEBUG("List frame " << it_remove->m_timeAxis.frameNo << " and subframe " << it_remove->m_timeAxis.subframeNo); 
+
+      if (GLOBAL_frameNo < 11) // handle the 1024 crossover, with the frame number restart
+      {
+        if ( !(it_remove->m_timeAxis.frameNo >= 1 && it_remove->m_timeAxis.frameNo <= 10) && (it_remove->m_timeAxis.frameNo < (1025-(11-GLOBAL_frameNo))) || (it_remove->m_timeAxis.frameNo == (1025-(11-GLOBAL_frameNo)) && it_remove->m_timeAxis.subframeNo < GLOBAL_subframeNo) )
+        {   
+       //   NS_LOG_DEBUG("Global < 11");
+          it_remove = m_RSSIlist.erase(it_remove);
+          --it_remove;
         }
-        else 
+      }
+      else 
+      {
+        if ((it_remove->m_timeAxis.frameNo < (GLOBAL_frameNo - 10)) || (it_remove->m_timeAxis.frameNo == (GLOBAL_frameNo-10) && (it_remove->m_timeAxis.subframeNo < GLOBAL_subframeNo)) || (it_remove->m_timeAxis.frameNo > GLOBAL_frameNo) ) 
         {
-           if ((it->m_timeAxis.frameNo < (GLOBAL_frameNo - 10)) || (it->m_timeAxis.frameNo == (GLOBAL_frameNo-10) && (it->m_timeAxis.subframeNo < GLOBAL_subframeNo)) || (it->m_timeAxis.frameNo > GLOBAL_frameNo) ) 
-           {
-               m_RSSIlist.erase(it);
-               --it;
-           }
-        } //end else
-     } // end if (Simulator::Now ().GetSeconds () > 0.5)
-  }
+       //   NS_LOG_DEBUG("Erasing");
+          it_remove = m_RSSIlist.erase(it_remove);
+      //    NS_LOG_DEBUG("Next frame " << it_remove->m_timeAxis.frameNo);
+          --it_remove;
+        }
+      }   //end else
+    } // end for
+  } // end if (Simulator::Now ().GetSeconds () > 0.5)
 
   NS_LOG_DEBUG("Printing the list");
   for(std::list<RSSImeas>::iterator it = m_RSSIlist.begin(); it != m_RSSIlist.end(); ++it) 
@@ -1030,14 +1037,14 @@ NistLteUePhy::UnimoreReceivedRssi (double rssi, uint16_t CSRindex, uint16_t ID)
   if (Simulator::Now ().GetSeconds () - m_CBRInterval > 0.2)
   {
     m_CBRInterval = Simulator::Now ().GetSeconds ();
-    NistLteUePhy::ReportCBR(ID, GLOBAL_frameNo, GLOBAL_subframeNo);
+    NistLteUePhy::UnimoreEvaluateCBR(ID, GLOBAL_frameNo, GLOBAL_subframeNo);
   }
  // std::cin.get();
 
 }
 
 void
-NistLteUePhy::ReportCBR (uint16_t ID, uint16_t frameNo, uint16_t subframeNo)
+NistLteUePhy::UnimoreEvaluateCBR (uint16_t ID, uint16_t frameNo, uint16_t subframeNo)
 {
   NS_LOG_FUNCTION(this);
   uint16_t N_Resources = (100-1)*4, counter = 0;

@@ -23,13 +23,13 @@
 #include <ns3/log.h>
 #include <stdint.h>
 #include <ns3/math.h>
-#include <ns3/nist-lte-phy-error-model.h>
+#include <ns3/nr-v2x-phy-error-model.h>
 #include <fstream>
 #include <iostream>
 
 #include <ns3/simulator.h>
 namespace ns3 {
-NS_LOG_COMPONENT_DEFINE ("NrV2xPhyErrorModel");
+NS_LOG_COMPONENT_DEFINE ("NistLtePhyErrorModel");
 
 
 // Huawei R1-160284 curvess
@@ -412,14 +412,14 @@ static const double PsbchAwgnSisoBlerCurveYaxis[43] = {
 
 
 int16_t
-NrV2xPhyErrorModel::GetRowIndex (uint16_t mcs, uint8_t harq)
+NistLtePhyErrorModel::GetRowIndex (uint16_t mcs, uint8_t harq)
 {
   NS_LOG_FUNCTION (mcs << (uint16_t) harq);
   return 4*mcs + harq;
 }
 
 int16_t
-NrV2xPhyErrorModel::GetColIndex (double val, double min, double max, double step)
+NistLtePhyErrorModel::GetColIndex (double val, double min, double max, double step)
 {
   NS_LOG_FUNCTION (val << min << max << step);
   //std::cout << "GetColIndex val=" << val << " min=" << min << " max=" << max << " step=" << step << std::endl;
@@ -433,7 +433,7 @@ NrV2xPhyErrorModel::GetColIndex (double val, double min, double max, double step
 }
 
 double
-NrV2xPhyErrorModel::GetBlerValue (const double (*xtable)[XTABLE_SIZE], const double (*ytable), const uint16_t ysize, uint16_t mcs, uint8_t harq, double sinr)
+NistLtePhyErrorModel::GetBlerValue (const double (*xtable)[XTABLE_SIZE], const double (*ytable), const uint16_t ysize, uint16_t mcs, uint8_t harq, double sinr)
 {
   NS_LOG_FUNCTION (mcs << (uint16_t) harq << sinr);
   double sinrDb = 10 * std::log10 (sinr);
@@ -475,7 +475,7 @@ NrV2xPhyErrorModel::GetBlerValue (const double (*xtable)[XTABLE_SIZE], const dou
 }
 
 double
-NrV2xPhyErrorModel::GetSinrValue (const double (*xtable)[XTABLE_SIZE], const double (*ytable), const uint16_t ysize, uint16_t mcs, uint8_t harq, double bler)
+NistLtePhyErrorModel::GetSinrValue (const double (*xtable)[XTABLE_SIZE], const double (*ytable), const uint16_t ysize, uint16_t mcs, uint8_t harq, double bler)
 {
   double sinr = 0;
   int16_t rIndex = GetRowIndex (mcs, harq);
@@ -502,7 +502,7 @@ NrV2xPhyErrorModel::GetSinrValue (const double (*xtable)[XTABLE_SIZE], const dou
 }
 
 double 
-NrV2xPhyErrorModel::GetValueForIndex (uint16_t index, double min, double max, double step)
+NistLtePhyErrorModel::GetValueForIndex (uint16_t index, double min, double max, double step)
 {
   NS_LOG_FUNCTION (index << min << max << step);
   //std::cout << "GetValueForIndex " << index << " " << min << " " << max << " " << step << std::endl;
@@ -515,7 +515,7 @@ NrV2xPhyErrorModel::GetValueForIndex (uint16_t index, double min, double max, do
 }
 
 uint16_t
-NrV2xPhyErrorModel::GetBlerIndex (double bler, uint16_t row, const double (*ytable), const uint16_t ysize)
+NistLtePhyErrorModel::GetBlerIndex (double bler, uint16_t row, const double (*ytable), const uint16_t ysize)
 {
   uint16_t index = 0;
   while (ytable[row*ysize+index] > bler) 
@@ -526,7 +526,7 @@ NrV2xPhyErrorModel::GetBlerIndex (double bler, uint16_t row, const double (*ytab
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetBler (const double (*xtable)[XTABLE_SIZE], const double (*ytable), const uint16_t ysize, uint16_t mcs, uint8_t harq, double prevSinr, double newSinr)
+NistLtePhyErrorModel::GetBler (const double (*xtable)[XTABLE_SIZE], const double (*ytable), const uint16_t ysize, uint16_t mcs, uint8_t harq, double prevSinr, double newSinr)
   {
     NS_LOG_FUNCTION (mcs << (uint16_t) harq << prevSinr << newSinr);
 
@@ -575,7 +575,7 @@ NrV2xPhyErrorModel::GetBler (const double (*xtable)[XTABLE_SIZE], const double (
 
 
 /*NistTbErrorStats_t
-NrV2xPhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance)
+NistLtePhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance)
 {
    //randomNormal = CreateObject<NormalRandomVariable> ();
    // See 3GPP TR 37.885
@@ -677,7 +677,7 @@ NrV2xPhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTx
 
 // TODO FIXME New for V2X
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance, uint32_t NPRB)
+NistLtePhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance, uint32_t NPRB)
 {
    //randomNormal = CreateObject<NormalRandomVariable> ();
    // See 3GPP TR 37.885
@@ -689,7 +689,8 @@ NrV2xPhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTx
    tbStat.tbler = 1; // Initialize to 1
    tbStat.sinr = sinr;
    //Check mcs values
-   NS_LOG_INFO("Number of occupied Physical Resource Blocks (PRBs) = " << NPRB);
+   NS_LOG_DEBUG("Number of occupied Physical Resource Blocks (PRBs) = " << NPRB << ", SINR level = " << sinrDb);
+//   std::cin.get();
    if (mcs > 20) 
      {
       NS_FATAL_ERROR ("PSSCH modulation cannot exceed 20");
@@ -797,7 +798,7 @@ NrV2xPhyErrorModel::GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTx
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetV2VPscchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance)
+NistLtePhyErrorModel::GetV2VPscchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance)
 {
    //randomNormal = CreateObject<NormalRandomVariable> ();
    // See 3GPP TR 37.885
@@ -809,6 +810,8 @@ NrV2xPhyErrorModel::GetV2VPscchBler (NistLteFadingModel fadingChannel, NistLteTx
    tbStat.tbler = 1; // Initialize to 1
    tbStat.sinr = sinr;
    //Check mcs values
+   NS_LOG_DEBUG("PSCCH SINR level = " << sinrDb);
+//   std::cin.get();
    if (mcs > 20) 
      {
       NS_FATAL_ERROR ("PSCCH modulation cannot exceed 20");
@@ -859,7 +862,7 @@ NrV2xPhyErrorModel::GetV2VPscchBler (NistLteFadingModel fadingChannel, NistLteTx
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory)
+NistLtePhyErrorModel::GetPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory)
 {
   //Check mcs values
   if (mcs > 20) 
@@ -925,7 +928,7 @@ if(harqHistory.size() == 0){
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetPsdchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr, HarqProcessInfoList_t harqHistory)
+NistLtePhyErrorModel::GetPsdchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr, HarqProcessInfoList_t harqHistory)
 {
   //Find the table to use
   const double (*xtable)[XTABLE_SIZE];
@@ -962,7 +965,7 @@ NrV2xPhyErrorModel::GetPsdchBler (NistLteFadingModel fadingChannel, NistLteTxMod
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetPscchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr)
+NistLtePhyErrorModel::GetPscchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr)
 {
   //Find the table to use
   const double (*xtable)[XTABLE_SIZE];
@@ -997,7 +1000,7 @@ NrV2xPhyErrorModel::GetPscchBler (NistLteFadingModel fadingChannel, NistLteTxMod
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetPuschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory)
+NistLtePhyErrorModel::GetPuschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory)
 {
   //Check mcs values
   if (mcs > 28) 
@@ -1040,7 +1043,7 @@ NrV2xPhyErrorModel::GetPuschBler (NistLteFadingModel fadingChannel, NistLteTxMod
 }
 
 NistTbErrorStats_t
-NrV2xPhyErrorModel::GetPsbchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr)
+NistLtePhyErrorModel::GetPsbchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr)
 {
   //Find the table to use
   const double (*xtable)[XTABLE_SIZE];

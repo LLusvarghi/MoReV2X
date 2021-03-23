@@ -29,7 +29,7 @@
 #include <ns3/packet-burst.h>
 #include <ns3/random-variable-stream.h>
 
-#include "nr-v2x2-ue-mac.h"
+#include "nr-v2x-ue-mac.h"
 #include "nr-v2x-ue-net-device.h"
 #include "nist-lte-radio-bearer-tag.h"
 #include <ns3/nist-ff-mac-common.h>
@@ -50,9 +50,9 @@
 
 namespace ns3 {
 
-NS_LOG_COMPONENT_DEFINE ("NrV2xUeMac");
+NS_LOG_COMPONENT_DEFINE ("NistLteUeMac");
 
-NS_OBJECT_ENSURE_REGISTERED (NrV2xUeMac);
+NS_OBJECT_ENSURE_REGISTERED (NistLteUeMac);
 
 //std::map<int, CountersReservations> UnimoreReservations = { {0,{0,0,0,0}} };
 //double prevPrintTimeMAC = 0;
@@ -64,7 +64,7 @@ NS_OBJECT_ENSURE_REGISTERED (NrV2xUeMac);
 class NistUeMemberLteUeCmacSapProvider : public NistLteUeCmacSapProvider
 {
 public:
-	NistUeMemberLteUeCmacSapProvider (NrV2xUeMac* mac);
+	NistUeMemberLteUeCmacSapProvider (NistLteUeMac* mac);
 
 	// inherited from NistLteUeCmacSapProvider
 	virtual void ConfigureRach (NistRachConfig rc);
@@ -93,11 +93,11 @@ public:
 	virtual void AddLCPriority ( uint8_t rnti, uint8_t lcid, uint8_t priority);
 
 private:
-	NrV2xUeMac* m_mac;
+	NistLteUeMac* m_mac;
 };
 
 
-NistUeMemberLteUeCmacSapProvider::NistUeMemberLteUeCmacSapProvider (NrV2xUeMac* mac)
+NistUeMemberLteUeCmacSapProvider::NistUeMemberLteUeCmacSapProvider (NistLteUeMac* mac)
 : m_mac (mac)
 {
 }
@@ -227,18 +227,18 @@ NistUeMemberLteUeCmacSapProvider::AddLCPriority ( uint8_t rnti, uint8_t lcid, ui
 class NistUeMemberLteMacSapProvider : public NistLteMacSapProvider
 {
 public:
-	NistUeMemberLteMacSapProvider (NrV2xUeMac* mac);
+	NistUeMemberLteMacSapProvider (NistLteUeMac* mac);
 
 	// inherited from NistLteMacSapProvider
 	virtual void TransmitPdu (NistTransmitPduParameters params);
 	virtual void ReportBufferNistStatus (NistReportBufferNistStatusParameters params);
 
 private:
-	NrV2xUeMac* m_mac;
+	NistLteUeMac* m_mac;
 };
 
 
-NistUeMemberLteMacSapProvider::NistUeMemberLteMacSapProvider (NrV2xUeMac* mac)
+NistUeMemberLteMacSapProvider::NistUeMemberLteMacSapProvider (NistLteUeMac* mac)
 : m_mac (mac)
 {
 }
@@ -262,7 +262,7 @@ NistUeMemberLteMacSapProvider::ReportBufferNistStatus (NistReportBufferNistStatu
 class NistUeMemberLteUePhySapUser : public NistLteUePhySapUser
 {
 public:
-	NistUeMemberLteUePhySapUser (NrV2xUeMac* mac);
+	NistUeMemberLteUePhySapUser (NistLteUeMac* mac);
 
 	// inherited from NistLtePhySapUser
 	virtual void ReceivePhyPdu (Ptr<Packet> p);
@@ -275,10 +275,10 @@ public:
         virtual void StoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart, uint16_t rbLen);
 
 private:
-	NrV2xUeMac* m_mac;
+	NistLteUeMac* m_mac;
 };
 
-NistUeMemberLteUePhySapUser::NistUeMemberLteUePhySapUser (NrV2xUeMac* mac) : m_mac (mac)
+NistUeMemberLteUePhySapUser::NistUeMemberLteUePhySapUser (NistLteUeMac* mac) : m_mac (mac)
 {
 
 }
@@ -293,7 +293,7 @@ NistUeMemberLteUePhySapUser::ReceivePhyPdu (Ptr<Packet> p)
 void
 NistUeMemberLteUePhySapUser::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 {
-	m_mac->DoSlotIndication (frameNo, subframeNo);
+	m_mac->DoSubframeIndication (frameNo, subframeNo);
 }
 
 void
@@ -331,89 +331,89 @@ NistUeMemberLteUePhySapUser::StoreTxInfo (SidelinkCommResourcePool::SubframeInfo
 
 
 //////////////////////////////////////////////////////////
-// NrV2xUeMac methods
+// NistLteUeMac methods
 /////////////////////////////////////////////////////////
 
 
 TypeId
-NrV2xUeMac::GetTypeId (void)
+NistLteUeMac::GetTypeId (void)
 {
-	static TypeId tid = TypeId ("ns3::NrV2xUeMac")
+	static TypeId tid = TypeId ("ns3::NistLteUeMac")
 		.SetParent<Object> ()
-		.AddConstructor<NrV2xUeMac> ()
+		.AddConstructor<NistLteUeMac> ()
 		.AddAttribute ("NistUlScheduler",
 					"Type of Scheduler in the UE",
 					StringValue ("ns3::NistRrFfMacScheduler"),
-					MakeStringAccessor (&NrV2xUeMac::SetNistUlScheduler,
-					&NrV2xUeMac::GetNistUlScheduler),
+					MakeStringAccessor (&NistLteUeMac::SetNistUlScheduler,
+					&NistLteUeMac::GetNistUlScheduler),
 					MakeStringChecker ())
 		.AddAttribute ("Ktrp",
 					"The repetition for PSSCH. Default = 0",
 					UintegerValue (0),
-					MakeUintegerAccessor (&NrV2xUeMac::m_slKtrp),
+					MakeUintegerAccessor (&NistLteUeMac::m_slKtrp),
 					MakeUintegerChecker<uint8_t> ())
 		.AddAttribute ("SlGrantMcs",
 					"The MCS of the SL grant, must be [0..15] (default 0)",
 					UintegerValue (0),
-					MakeUintegerAccessor (&NrV2xUeMac::m_slGrantMcs),
+					MakeUintegerAccessor (&NistLteUeMac::m_slGrantMcs),
 					MakeUintegerChecker<uint8_t> ())
 		.AddAttribute ("SlGrantSize",
 					"The number of RBs allocated per UE for sidelink (default 1)",
 					UintegerValue (1),
-					MakeUintegerAccessor (&NrV2xUeMac::m_slGrantSize),
+					MakeUintegerAccessor (&NistLteUeMac::m_slGrantSize),
 					MakeUintegerChecker<uint8_t> ())
 		.AddAttribute ("PucchSize",
 					"Number of RBs reserved for PUCCH (default 0)",
 					UintegerValue (0),
-					MakeUintegerAccessor (&NrV2xUeMac::m_pucchSize),
+					MakeUintegerAccessor (&NistLteUeMac::m_pucchSize),
 					MakeUintegerChecker<uint8_t> ())
                 .AddAttribute ("RandomV2VSelection",
                                         "Whether the resources for V2V transmissions are randomly selected in UE_SELECTED mode (default false)",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_randomSelection),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_randomSelection),
                                         MakeBooleanChecker ())
 		.AddTraceSource ("SlUeScheduling",
 					"Information regarding SL UE scheduling",
-					MakeTraceSourceAccessor (&NrV2xUeMac::m_slUeScheduling),
+					MakeTraceSourceAccessor (&NistLteUeMac::m_slUeScheduling),
 					"ns3::NistSlUeMacStatParameters::TracedCallback")
 		.AddTraceSource ("SlSharedChUeScheduling",
 					"Information regarding SL Shared Channel UE scheduling",
-					MakeTraceSourceAccessor (&NrV2xUeMac::m_slSharedChUeScheduling),
+					MakeTraceSourceAccessor (&NistLteUeMac::m_slSharedChUeScheduling),
 					"ns3::NistSlUeMacStatParameters::TracedCallback")
    		 // Added to trace the transmission of discovery message
                 .AddTraceSource ("DiscoveryAnnouncement",
                                         "trace to track the announcement of discovery messages",
-                                        MakeTraceSourceAccessor (&NrV2xUeMac::m_discoveryAnnouncementTrace),
-                                        "ns3::NrV2xUeMac::DiscoveryAnnouncementTracedCallback")
+                                        MakeTraceSourceAccessor (&NistLteUeMac::m_discoveryAnnouncementTrace),
+                                        "ns3::NistLteUeMac::DiscoveryAnnouncementTracedCallback")
                 .AddAttribute ("ListL2Enabled",
                                         "Enable List L2 of Mode 4 SSPS",
                                         BooleanValue (true),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_List2Enabled),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_List2Enabled),
                                         MakeBooleanChecker ())
                 .AddAttribute ("UseTxCresel",
                                         "Use the transmitter reselection counter",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_useTxCresel),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_useTxCresel),
                                         MakeBooleanChecker ())
                 .AddAttribute ("UseRxCresel",
                                         "Use the received SCI reselection counter",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_useRxCresel),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_useRxCresel),
                                         MakeBooleanChecker ())
                 .AddAttribute ("AggressiveMode4",
                                         "Use Aggressive Mode 4 strategy when PDB is violated",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_aggressive),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_aggressive),
                                         MakeBooleanChecker ())
                 .AddAttribute ("StandardSSPS",
                                         "Use one-shot SSPS reservation when PDB is violated",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_standardSSPS),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_standardSSPS),
                                         MakeBooleanChecker ())
                 .AddAttribute ("SubmissiveMode4",
                                         "Use Submissive Mode 4 strategy when PDB is violated",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2xUeMac::m_submissive),
+                                        MakeBooleanAccessor (&NistLteUeMac::m_submissive),
                                         MakeBooleanChecker ())
 
 																									;
@@ -421,7 +421,7 @@ NrV2xUeMac::GetTypeId (void)
 }
 
 
-NrV2xUeMac::NrV2xUeMac ()
+NistLteUeMac::NistLteUeMac ()
 :  
    m_cphySapProvider (0),
    m_bsrPeriodicity (MilliSeconds (1)), // ideal behavior
@@ -472,24 +472,24 @@ NrV2xUeMac::NrV2xUeMac ()
 
 
 void
-NrV2xUeMac::SetNistUlScheduler (std::string UeSched)
+NistLteUeMac::SetNistUlScheduler (std::string UeSched)
 {
 	m_NistUlScheduler = UeSched;
 }
 
 std::string 
-NrV2xUeMac::GetNistUlScheduler (void) const
+NistLteUeMac::GetNistUlScheduler (void) const
 {
 	return m_NistUlScheduler;
 }
 
-NrV2xUeMac::~NrV2xUeMac ()
+NistLteUeMac::~NistLteUeMac ()
 {
 	NS_LOG_FUNCTION (this);
 }
 
 void
-NrV2xUeMac::DoDispose ()
+NistLteUeMac::DoDispose ()
 {
 	NS_LOG_FUNCTION (this);
 	m_miUlHarqProcessesPacket.clear ();
@@ -500,46 +500,46 @@ NrV2xUeMac::DoDispose ()
 }
 
 void
-NrV2xUeMac::SetNistLteUeCphySapProvider (NistLteUeCphySapProvider * s)
+NistLteUeMac::SetNistLteUeCphySapProvider (NistLteUeCphySapProvider * s)
 {
   NS_LOG_FUNCTION (this << s);
   m_cphySapProvider = s;
 }
 
 NistLteUePhySapUser*
-NrV2xUeMac::GetNistLteUePhySapUser (void)
+NistLteUeMac::GetNistLteUePhySapUser (void)
 {
 	return m_uePhySapUser;
 }
 
 void
-NrV2xUeMac::SetNistLteUePhySapProvider (NistLteUePhySapProvider* s)
+NistLteUeMac::SetNistLteUePhySapProvider (NistLteUePhySapProvider* s)
 {
 	m_uePhySapProvider = s;
 }
 
 
 NistLteMacSapProvider*
-NrV2xUeMac::GetNistLteMacSapProvider (void)
+NistLteUeMac::GetNistLteMacSapProvider (void)
 {
 	return m_macSapProvider;
 }
 
 void
-NrV2xUeMac::SetNistLteUeCmacSapUser (NistLteUeCmacSapUser* s)
+NistLteUeMac::SetNistLteUeCmacSapUser (NistLteUeCmacSapUser* s)
 {
 	m_cmacSapUser = s;
 }
 
 NistLteUeCmacSapProvider*
-NrV2xUeMac::GetNistLteUeCmacSapProvider (void)
+NistLteUeMac::GetNistLteUeCmacSapProvider (void)
 {
 	return m_cmacSapProvider;
 }
 
 
 void
-NrV2xUeMac::DoTransmitPdu (NistLteMacSapProvider::NistTransmitPduParameters params)
+NistLteUeMac::DoTransmitPdu (NistLteMacSapProvider::NistTransmitPduParameters params)
 {
 	NS_LOG_FUNCTION (this);
 	NS_ASSERT_MSG (m_rnti == params.rnti, "RNTI mismatch between RLC and MAC");
@@ -569,7 +569,7 @@ NrV2xUeMac::DoTransmitPdu (NistLteMacSapProvider::NistTransmitPduParameters para
 }
 
 void
-NrV2xUeMac::DoReportBufferNistStatus (NistLteMacSapProvider::NistReportBufferNistStatusParameters params)
+NistLteUeMac::DoReportBufferNistStatus (NistLteMacSapProvider::NistReportBufferNistStatusParameters params)
 {
 	NS_LOG_FUNCTION (this << (uint32_t) params.lcid);
 
@@ -659,7 +659,7 @@ NrV2xUeMac::DoReportBufferNistStatus (NistLteMacSapProvider::NistReportBufferNis
 
 
 void
-NrV2xUeMac::SendReportBufferNistStatus (void)
+NistLteUeMac::SendReportBufferNistStatus (void)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -763,7 +763,7 @@ NrV2xUeMac::SendReportBufferNistStatus (void)
 }
 
 void
-NrV2xUeMac::SendSidelinkReportBufferStatus (void)
+NistLteUeMac::SendSidelinkReportBufferStatus (void)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -833,7 +833,7 @@ NrV2xUeMac::SendSidelinkReportBufferStatus (void)
 
 
 void 
-NrV2xUeMac::RandomlySelectAndSendRaPreamble ()
+NistLteUeMac::RandomlySelectAndSendRaPreamble ()
 {
 	NS_LOG_FUNCTION (this);
 	// 3GPP 36.321 5.1.1
@@ -845,7 +845,7 @@ NrV2xUeMac::RandomlySelectAndSendRaPreamble ()
 }
 
 void
-NrV2xUeMac::SendRaPreamble (bool contention)
+NistLteUeMac::SendRaPreamble (bool contention)
 {
 	NS_LOG_FUNCTION (this << (uint32_t) m_raPreambleId << contention);
 	// Since regular UL NistLteControlMessages need m_ulConfigured = true in
@@ -862,19 +862,19 @@ NrV2xUeMac::SendRaPreamble (bool contention)
 	// 3GPP 36.321 5.1.4
 	Time raWindowBegin = MilliSeconds (3);
 	Time raWindowEnd = MilliSeconds (3 + m_rachConfig.raResponseWindowSize);
-	Simulator::Schedule (raWindowBegin, &NrV2xUeMac::StartWaitingForRaResponse, this);
-	m_noRaResponseReceivedEvent = Simulator::Schedule (raWindowEnd, &NrV2xUeMac::RaResponseTimeout, this, contention);
+	Simulator::Schedule (raWindowBegin, &NistLteUeMac::StartWaitingForRaResponse, this);
+	m_noRaResponseReceivedEvent = Simulator::Schedule (raWindowEnd, &NistLteUeMac::RaResponseTimeout, this, contention);
 }
 
 void 
-NrV2xUeMac::StartWaitingForRaResponse ()
+NistLteUeMac::StartWaitingForRaResponse ()
 {
 	NS_LOG_FUNCTION (this);
 	m_waitingForRaResponse = true;
 }
 
 void 
-NrV2xUeMac::RecvRaResponse (NistBuildNistRarListElement_s raResponse)
+NistLteUeMac::RecvRaResponse (NistBuildNistRarListElement_s raResponse)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -929,7 +929,7 @@ NrV2xUeMac::RecvRaResponse (NistBuildNistRarListElement_s raResponse)
 }
 
 void 
-NrV2xUeMac::RaResponseTimeout (bool contention)
+NistLteUeMac::RaResponseTimeout (bool contention)
 {
 	NS_LOG_FUNCTION (this << contention);
 	m_waitingForRaResponse = false;
@@ -955,7 +955,7 @@ NrV2xUeMac::RaResponseTimeout (bool contention)
 }
 
 void 
-NrV2xUeMac::DoConfigureRach (NistLteUeCmacSapProvider::NistRachConfig rc)
+NistLteUeMac::DoConfigureRach (NistLteUeCmacSapProvider::NistRachConfig rc)
 {
 	NS_LOG_FUNCTION (this);
 	m_rachConfig = rc;
@@ -963,7 +963,7 @@ NrV2xUeMac::DoConfigureRach (NistLteUeCmacSapProvider::NistRachConfig rc)
 }
 
 void 
-NrV2xUeMac::DoStartContentionBasedRandomAccessProcedure ()
+NistLteUeMac::DoStartContentionBasedRandomAccessProcedure ()
 {
 	NS_LOG_FUNCTION (this);
 
@@ -975,7 +975,7 @@ NrV2xUeMac::DoStartContentionBasedRandomAccessProcedure ()
 }
 
 void 
-NrV2xUeMac::DoStartNonContentionBasedRandomAccessProcedure (uint16_t rnti, uint8_t preambleId, uint8_t prachMask)
+NistLteUeMac::DoStartNonContentionBasedRandomAccessProcedure (uint16_t rnti, uint8_t preambleId, uint8_t prachMask)
 {
 	NS_LOG_FUNCTION (this << " rnti" << rnti);
 	NS_ASSERT_MSG (prachMask == 0, "requested PRACH MASK = " << (uint32_t) prachMask << ", but only PRACH MASK = 0 is supported");
@@ -986,7 +986,7 @@ NrV2xUeMac::DoStartNonContentionBasedRandomAccessProcedure (uint16_t rnti, uint8
 }
 
 void
-NrV2xUeMac::DoAddLc (uint8_t lcId,  NistLteUeCmacSapProvider::NistLogicalChannelConfig lcConfig, NistLteMacSapUser* msu)
+NistLteUeMac::DoAddLc (uint8_t lcId,  NistLteUeCmacSapProvider::NistLogicalChannelConfig lcConfig, NistLteMacSapUser* msu)
 {
 	NS_LOG_FUNCTION (this << " lcId" << (uint32_t) lcId);
 	NS_ASSERT_MSG (m_lcInfoMap.find (lcId) == m_lcInfoMap.end (), "cannot add channel because LCID " << lcId << " is already present");
@@ -999,7 +999,7 @@ NrV2xUeMac::DoAddLc (uint8_t lcId,  NistLteUeCmacSapProvider::NistLogicalChannel
 
 // added function to handle LC priority 
 void
-NrV2xUeMac::DoAddLCPriority ( uint8_t rnti, uint8_t lcid, uint8_t priority)
+NistLteUeMac::DoAddLCPriority ( uint8_t rnti, uint8_t lcid, uint8_t priority)
 {
 	std::map <uint8_t, std::map <uint8_t, uint8_t> >::iterator it;
 	it = PriorityMap.find(rnti);
@@ -1027,7 +1027,7 @@ NrV2xUeMac::DoAddLCPriority ( uint8_t rnti, uint8_t lcid, uint8_t priority)
 }
 
 void
-NrV2xUeMac::DoAddLc (uint8_t lcId, uint32_t srcL2Id, uint32_t dstL2Id, NistLteUeCmacSapProvider::NistLogicalChannelConfig lcConfig, NistLteMacSapUser* msu)
+NistLteUeMac::DoAddLc (uint8_t lcId, uint32_t srcL2Id, uint32_t dstL2Id, NistLteUeCmacSapProvider::NistLogicalChannelConfig lcConfig, NistLteMacSapUser* msu)
 {
 	NS_LOG_FUNCTION (this << (uint32_t) lcId << srcL2Id << dstL2Id);
 	SidelinkLcIdentifier sllcid;
@@ -1044,7 +1044,7 @@ NrV2xUeMac::DoAddLc (uint8_t lcId, uint32_t srcL2Id, uint32_t dstL2Id, NistLteUe
 }
 
 void
-NrV2xUeMac::DoRemoveLc (uint8_t lcId)
+NistLteUeMac::DoRemoveLc (uint8_t lcId)
 {
 	NS_LOG_FUNCTION (this << " lcId" << lcId);
 	NS_ASSERT_MSG (m_lcInfoMap.find (lcId) != m_lcInfoMap.end (), "could not find LCID " << lcId);
@@ -1057,7 +1057,7 @@ NrV2xUeMac::DoRemoveLc (uint8_t lcId)
 }
 
 void
-NrV2xUeMac::DoRemoveLc (uint8_t lcId, uint32_t srcL2Id, uint32_t dstL2Id)
+NistLteUeMac::DoRemoveLc (uint8_t lcId, uint32_t srcL2Id, uint32_t dstL2Id)
 {
 	NS_LOG_FUNCTION (this << " lcId" << lcId << ", srcL2Id=" << srcL2Id << ", dstL2Id" << dstL2Id);
 	//    NS_ASSERT_MSG (m_lcInfoMap.find (lcId) != m_lcInfoMap.end (), "could not find LCID " << lcId);
@@ -1065,7 +1065,7 @@ NrV2xUeMac::DoRemoveLc (uint8_t lcId, uint32_t srcL2Id, uint32_t dstL2Id)
 }
 
 void
-NrV2xUeMac::DoReset ()
+NistLteUeMac::DoReset ()
 {
 	NS_LOG_FUNCTION (this);
 	std::map <uint8_t, NistLcInfo>::iterator it = m_lcInfoMap.begin ();
@@ -1090,7 +1090,7 @@ NrV2xUeMac::DoReset ()
 }
 
 void
-NrV2xUeMac::DoAddSlTxPool (Ptr<SidelinkTxDiscResourcePool> pool)
+NistLteUeMac::DoAddSlTxPool (Ptr<SidelinkTxDiscResourcePool> pool)
 {
   //NS_ASSERT_MSG (m_discTxPools.m_pool != NULL, "Cannot add discovery transmission pool for " << m_rnti << ". Pool already exist for destination");
   DiscPoolInfo info;
@@ -1107,33 +1107,33 @@ NrV2xUeMac::DoAddSlTxPool (Ptr<SidelinkTxDiscResourcePool> pool)
 }
 
 void
-NrV2xUeMac::DoRemoveSlTxPool ()
+NistLteUeMac::DoRemoveSlTxPool ()
 {
   m_discTxPools.m_pool = NULL;
 }
 
 void
-NrV2xUeMac::DoSetSlRxPools (std::list<Ptr<SidelinkRxDiscResourcePool> > pools)
+NistLteUeMac::DoSetSlRxPools (std::list<Ptr<SidelinkRxDiscResourcePool> > pools)
 {
   m_discRxPools = pools;
 }
 
 void 
-NrV2xUeMac::DoModifyDiscTxApps (std::list<uint32_t> apps)
+NistLteUeMac::DoModifyDiscTxApps (std::list<uint32_t> apps)
 {
   m_discTxApps = apps;
   m_cphySapProvider->AddDiscTxApps (apps);
 }
 
 void 
-NrV2xUeMac::DoModifyDiscRxApps (std::list<uint32_t> apps)
+NistLteUeMac::DoModifyDiscRxApps (std::list<uint32_t> apps)
 {
   m_discRxApps = apps;
   m_cphySapProvider->AddDiscRxApps (apps);
 }
 
 void
-NrV2xUeMac::DoAddSlTxPool (uint32_t dstL2Id, Ptr<SidelinkTxCommResourcePool> pool)
+NistLteUeMac::DoAddSlTxPool (uint32_t dstL2Id, Ptr<SidelinkTxCommResourcePool> pool)
 {
 	std::map <uint32_t, PoolInfo >::iterator it;
 	it = m_sidelinkTxPoolsMap.find (dstL2Id);
@@ -1156,7 +1156,7 @@ NrV2xUeMac::DoAddSlTxPool (uint32_t dstL2Id, Ptr<SidelinkTxCommResourcePool> poo
 }
 
 void
-NrV2xUeMac::DoRemoveSlTxPool (uint32_t dstL2Id)
+NistLteUeMac::DoRemoveSlTxPool (uint32_t dstL2Id)
 {
 	std::map <uint32_t, PoolInfo >::iterator it;
 	it = m_sidelinkTxPoolsMap.find (dstL2Id);
@@ -1166,13 +1166,13 @@ NrV2xUeMac::DoRemoveSlTxPool (uint32_t dstL2Id)
 
 
 void
-NrV2xUeMac::DoSetSlRxPools (std::list<Ptr<SidelinkRxCommResourcePool> > pools)
+NistLteUeMac::DoSetSlRxPools (std::list<Ptr<SidelinkRxCommResourcePool> > pools)
 {
 	m_sidelinkRxPools = pools;
 }
 
 void
-NrV2xUeMac::DoSetRnti (uint16_t rnti)
+NistLteUeMac::DoSetRnti (uint16_t rnti)
 {
 	NS_LOG_FUNCTION (this << rnti);
 	NS_ASSERT_MSG (m_rnti == 0, "Cannot manually set RNTI if already configured");
@@ -1180,7 +1180,7 @@ NrV2xUeMac::DoSetRnti (uint16_t rnti)
 }
 
 void
-NrV2xUeMac::DoReceivePhyPdu (Ptr<Packet> p)
+NistLteUeMac::DoReceivePhyPdu (Ptr<Packet> p)
 {
 	NS_LOG_FUNCTION (this);
 	NistLteRadioBearerTag tag;
@@ -1252,7 +1252,7 @@ NrV2xUeMac::DoReceivePhyPdu (Ptr<Packet> p)
 
 
 void
-NrV2xUeMac::DoReceiveNistLteControlMessage (Ptr<NistLteControlMessage> msg)
+NistLteUeMac::DoReceiveNistLteControlMessage (Ptr<NistLteControlMessage> msg)
 {
 	if ( m_NistUlScheduler == "ns3::NistPfFfMacScheduler")
 	{
@@ -1278,7 +1278,7 @@ NrV2xUeMac::DoReceiveNistLteControlMessage (Ptr<NistLteControlMessage> msg)
 }
 
 void
-NrV2xUeMac::DoReceiveNistRrLteControlMessage (Ptr<NistLteControlMessage> msg)
+NistLteUeMac::DoReceiveNistRrLteControlMessage (Ptr<NistLteControlMessage> msg)
 {
 	//std::cout<<" ENTER DoReceiveNistRrLteControlMessage "<<std::endl;
 	NS_LOG_FUNCTION (this);
@@ -1662,7 +1662,7 @@ NrV2xUeMac::DoReceiveNistRrLteControlMessage (Ptr<NistLteControlMessage> msg)
 }
 
 void
-NrV2xUeMac::DoReceiveNistPFLteControlMessage (Ptr<NistLteControlMessage> msg)
+NistLteUeMac::DoReceiveNistPFLteControlMessage (Ptr<NistLteControlMessage> msg)
 {
 
 	NS_LOG_FUNCTION (this);
@@ -2051,7 +2051,7 @@ NrV2xUeMac::DoReceiveNistPFLteControlMessage (Ptr<NistLteControlMessage> msg)
 }
 
 void
-NrV2xUeMac::DoReceiveNistMTLteControlMessage (Ptr<NistLteControlMessage> msg)
+NistLteUeMac::DoReceiveNistMTLteControlMessage (Ptr<NistLteControlMessage> msg)
 {
 	NS_LOG_FUNCTION (this);
 	if (msg->GetMessageType () == NistLteControlMessage::UL_DCI)
@@ -2430,7 +2430,7 @@ NrV2xUeMac::DoReceiveNistMTLteControlMessage (Ptr<NistLteControlMessage> msg)
 }
 
 void
-NrV2xUeMac::DoReceiveNistPrLteControlMessage (Ptr<NistLteControlMessage> msg)
+NistLteUeMac::DoReceiveNistPrLteControlMessage (Ptr<NistLteControlMessage> msg)
 {
 	NS_LOG_FUNCTION (this);
 	if (msg->GetMessageType () == NistLteControlMessage::UL_DCI)
@@ -2867,7 +2867,7 @@ NrV2xUeMac::DoReceiveNistPrLteControlMessage (Ptr<NistLteControlMessage> msg)
 }
 
 void
-NrV2xUeMac::RefreshHarqProcessesPacketBuffer (void)
+NistLteUeMac::RefreshHarqProcessesPacketBuffer (void)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -2893,7 +2893,7 @@ NrV2xUeMac::RefreshHarqProcessesPacketBuffer (void)
 //TODO FIXME NEW for V2X
 
 SidelinkCommResourcePool::SubframeInfo
-NrV2xUeMac::SimulatorTimeToSubframe (Time time)
+NistLteUeMac::SimulatorTimeToSubframe (Time time)
 {
    uint64_t milliseconds = time.GetSeconds () * 1000 + 15;
    SidelinkCommResourcePool::SubframeInfo SF;
@@ -2904,7 +2904,7 @@ NrV2xUeMac::SimulatorTimeToSubframe (Time time)
 }
 
 uint32_t 
-NrV2xUeMac::ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1)
+NistLteUeMac::ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1)
 {
    
    uint32_t nCSR = 0;
@@ -2917,13 +2917,13 @@ NrV2xUeMac::ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourc
 }
 
 bool
-NrV2xUeMac::CompareRssi (CandidateCSRl2 first, CandidateCSRl2 second)
+NistLteUeMac::CompareRssi (CandidateCSRl2 first, CandidateCSRl2 second)
 {
   return (first.rssi < second.rssi);
 }
 
-NrV2xUeMac::V2XSidelinkGrant 
-NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMac::V2XSidelinkGrant V2XGrant, uint32_t pdb, uint32_t p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize)
+NistLteUeMac::V2XSidelinkGrant 
+NistLteUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NistLteUeMac::V2XSidelinkGrant V2XGrant, uint32_t pdb, uint32_t p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize)
 {                               
    frameNo --;
    subframeNo --; 
@@ -3167,23 +3167,31 @@ NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMa
         }
 
          // ------------------ Now remove resources ------------------------------
-         NS_LOG_INFO("Now L1: remove reserved resources");
-    //     NS_LOG_INFO("Remove sensed resources outside of the selection window");
+         NS_LOG_DEBUG("UE " << m_rnti << " Now L1: remove reserved resources");
+         NS_LOG_INFO("Remove sensed resources outside of the selection window. Sensed resources map size: " <<  m_sensedReservedCSRMap.size());
          // 1) Clean the list of reserved resources: keep only valid the ones within the selection window
          for (sensedIt = m_sensedReservedCSRMap.begin (); sensedIt != m_sensedReservedCSRMap.end (); sensedIt++)
          {
-           std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR>::iterator sensedSFIt;    
-           for (sensedSFIt = sensedIt->second.begin(); sensedSFIt != sensedIt->second.end(); sensedSFIt++)
+           std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR>::iterator sensedSFIt; 
+//           for (sensedSFIt = sensedIt->second.begin(); sensedSFIt != sensedIt->second.end(); sensedSFIt++)   
+           for (sensedSFIt = sensedIt->second.begin(); sensedSFIt != sensedIt->second.end(); /*no increment*/)
+           {
              if (Simulator::Now().GetSeconds() - (sensedSFIt->second.reservationTime.GetSeconds() + 0.1) > 1.0) // 0.1 is the actual difference between reservation time and frame/subframe number
              {
-              //  NS_LOG_DEBUG("Reservation outside of the 1s Sensing Window");
-              //  NS_LOG_DEBUG("Erase this resource: CSR index " << sensedIt->first << ", frame: " << sensedSFIt->first.frameNo << ", subframe " << sensedSFIt->first.subframeNo << " Now: " << Simulator::Now().GetSeconds() << " Time: " << sensedSFIt->second.reservationTime.GetSeconds());
-                sensedIt->second.erase(sensedSFIt);   
+                NS_LOG_DEBUG("Reservation outside of the 1s Sensing Window");
+                NS_LOG_DEBUG("Erase this resource: CSR index " << sensedIt->first << ", frame: " << sensedSFIt->first.frameNo << ", subframe " << sensedSFIt->first.subframeNo << " Now: " << Simulator::Now().GetSeconds() << " Time: " << sensedSFIt->second.reservationTime.GetSeconds());
+
+                sensedSFIt = sensedIt->second.erase(sensedSFIt);  
+
+           //     NS_LOG_DEBUG("Next pointer: CSR index " << sensedIt->first << ", frame: " << sensedSFIt->first.frameNo << ", subframe " << sensedSFIt->first.subframeNo << " Now: " << Simulator::Now().GetSeconds() << " Time: " << sensedSFIt->second.reservationTime.GetSeconds());
+
              }
              else
              {
-           //     NS_LOG_DEBUG("Keep this resource: CSR index " << sensedIt->first << ", frame: " << sensedSFIt->first.frameNo << ", subframe " << sensedSFIt->first.subframeNo);
+                NS_LOG_DEBUG("Keep this resource: CSR index " << sensedIt->first << ", frame: " << sensedSFIt->first.frameNo << ", subframe " << sensedSFIt->first.subframeNo);
+                sensedSFIt++;
              }
+           }
          } // end for (sensedIt = m_sensedReservedCSRMap.begin (); sensedIt != m_sensedReservedCSRMap.end (); sensedIt++)
 
          // Print the list of sensed reserved resources
@@ -3214,7 +3222,7 @@ NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMa
          {
            // Save the list of sensed resources
            if (m_rnti == DebugNode)
-           NrV2xUeMac::UnimorePrintSensedCSR(m_sensedReservedCSRMap);
+           NistLteUeMac::UnimorePrintSensedCSR(m_sensedReservedCSRMap);
 
            NS_LOG_INFO("Remove resources inside the selection window from L1: dont' use Cresel");
            std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR>::iterator candIt;
@@ -3290,7 +3298,7 @@ NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMa
       //     std::cin.get();
 
            if (m_rnti == DebugNode)
-           NrV2xUeMac::UnimorePrintSensedCSR(m_sensedReservedCSRMap);
+           NistLteUeMac::UnimorePrintSensedCSR(m_sensedReservedCSRMap);
 
      //      std::ofstream removedFrames;
      //      removedFrames.open ("results/sidelink/removedFrames.txt", std::ios_base::app);
@@ -3448,7 +3456,7 @@ NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMa
   
           
            if (m_rnti == DebugNode)
-           NrV2xUeMac::UnimorePrintSensedCSR(SensedMap_EXT);
+           NistLteUeMac::UnimorePrintSensedCSR(SensedMap_EXT);
  
        /*    NS_LOG_DEBUG("Print the extended list of sensed resources"); 
            for (sensedIt = SensedMap_EXT.begin (); sensedIt != SensedMap_EXT.end (); sensedIt++)
@@ -4032,7 +4040,7 @@ NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMa
 //   if (m_rnti == DebugNode)
 //   {
 //     std::cin.get();
- //    Simulator::ScheduleNow (&NrV2xUeMac::UnimorePrintSensedCSR, this);
+ //    Simulator::ScheduleNow (&NistLteUeMac::UnimorePrintSensedCSR, this);
 //   }
 
 //    std::cin.get();
@@ -4041,7 +4049,7 @@ NrV2xUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, NrV2xUeMa
 
 
 void
-NrV2xUeMac::UnimorePrintSensedCSR (std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR> > SensedResources_Map)
+NistLteUeMac::UnimorePrintSensedCSR (std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR> > SensedResources_Map)
 {
   NS_LOG_FUNCTION(this);
   NS_LOG_DEBUG("Printing the list of sensed CSRs, at time: " << Simulator::Now ().GetSeconds ());
@@ -4063,13 +4071,13 @@ NrV2xUeMac::UnimorePrintSensedCSR (std::map <uint16_t,std::map<SidelinkCommResou
   }
   sensingDebug.close();
 
- // Simulator::Schedule (Seconds(0.1), &NrV2xUeMac::UnimorePrintSensedCSR, this);
+ // Simulator::Schedule (Seconds(0.1), &NistLteUeMac::UnimorePrintSensedCSR, this);
 
 }
 
 
 void
-NrV2xUeMac::UnimoreUpdateReservation (V2XSidelinkGrant *V2Xgrant)
+NistLteUeMac::UnimoreUpdateReservation (V2XSidelinkGrant *V2Xgrant)
 {
    V2Xgrant->m_Cresel--;
    NS_LOG_INFO("Cresel decremented to: " << V2Xgrant->m_Cresel);
@@ -4092,7 +4100,7 @@ NrV2xUeMac::UnimoreUpdateReservation (V2XSidelinkGrant *V2Xgrant)
 
 
 uint16_t
-NrV2xUeMac::GetSubchannelsNumber (uint16_t TBsize)
+NistLteUeMac::GetSubchannelsNumber (uint16_t TBsize)
 {
    uint16_t L_SubCh_TB = m_L_SubCh;
 //m_nsubCHsize * m_L_SubCh
@@ -4116,7 +4124,7 @@ NrV2xUeMac::GetSubchannelsNumber (uint16_t TBsize)
 }
 
 void
-NrV2xUeMac::DoSlotIndication (uint32_t frameNo, uint32_t subframeNo)
+NistLteUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 {
    NS_LOG_FUNCTION (this << " Frame no. " << frameNo << " subframe no. " << subframeNo);
    m_frameNo = frameNo;
@@ -5216,7 +5224,7 @@ NrV2xUeMac::DoSlotIndication (uint32_t frameNo, uint32_t subframeNo)
 }
 
 int64_t
-NrV2xUeMac::AssignStreams (int64_t stream)
+NistLteUeMac::AssignStreams (int64_t stream)
 {
 	NS_LOG_FUNCTION (this << stream);
 	m_raPreambleUniformVariable->SetStream (stream);
@@ -5224,7 +5232,7 @@ NrV2xUeMac::AssignStreams (int64_t stream)
 }
 
 void
-NrV2xUeMac::DoAddSlDestination (uint32_t destination)
+NistLteUeMac::DoAddSlDestination (uint32_t destination)
 {
 	std::list <uint32_t>::iterator it;
 	for (it = m_sidelinkDestinations.begin (); it != m_sidelinkDestinations.end ();it++) {
@@ -5240,7 +5248,7 @@ NrV2xUeMac::DoAddSlDestination (uint32_t destination)
 
 
 void
-NrV2xUeMac::DoRemoveSlDestination (uint32_t destination)
+NistLteUeMac::DoRemoveSlDestination (uint32_t destination)
 {
 	std::list <uint32_t>::iterator it = m_sidelinkDestinations.begin ();
 	while (it != m_sidelinkDestinations.end ()) {
@@ -5253,7 +5261,7 @@ NrV2xUeMac::DoRemoveSlDestination (uint32_t destination)
 }
 
 void
-NrV2xUeMac::DoNotifyChangeOfTiming(uint32_t frameNo, uint32_t subframeNo)
+NistLteUeMac::DoNotifyChangeOfTiming(uint32_t frameNo, uint32_t subframeNo)
 {
 	NS_LOG_FUNCTION (this);
 
@@ -5280,7 +5288,7 @@ NrV2xUeMac::DoNotifyChangeOfTiming(uint32_t frameNo, uint32_t subframeNo)
 }
 
 void
-NrV2xUeMac::DoReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb)
+NistLteUeMac::DoReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb)
 {
   
 
@@ -5291,12 +5299,12 @@ NrV2xUeMac::DoReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, doub
 
   m_PsschRsrpMap.insert (std::pair<Time,PsschRsrp> (time, rsrpStruct)); 
   
-  NS_LOG_INFO("NrV2xUeMac::DoReportPsschRsrp at time: " << time.GetSeconds () << " s, rbStart PSSCH: " << (int)rbStart << ", rbLen PSSCH: " << rbLen << ", PSSCH-RSRP: " << rsrpDb << "dB, List length: " << m_PsschRsrpMap.size ());   
+  NS_LOG_INFO("NistLteUeMac::DoReportPsschRsrp at time: " << time.GetSeconds () << " s, rbStart PSSCH: " << (int)rbStart << ", rbLen PSSCH: " << rbLen << ", PSSCH-RSRP: " << rsrpDb << "dB, List length: " << m_PsschRsrpMap.size ());   
 
 }
 
 void
-NrV2xUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI)
+NistLteUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI)
 {
 
  reservedSubframe.frameNo = reservedSubframe.frameNo -1;
@@ -5378,7 +5386,7 @@ NrV2xUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t 
 }
 
 void
-NrV2xUeMac::DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart, uint16_t rbLen)
+NistLteUeMac::DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart, uint16_t rbLen)
 {
 
   NS_LOG_DEBUG("Storing transmission information");
@@ -5411,14 +5419,14 @@ NrV2xUeMac::DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint
 }
 
 std::list< Ptr<SidelinkRxDiscResourcePool> > 
-NrV2xUeMac::GetDiscRxPools ()
+NistLteUeMac::GetDiscRxPools ()
 {
   NS_LOG_FUNCTION (this);
   return m_discRxPools;
 }
 
 Ptr<SidelinkTxDiscResourcePool>
-NrV2xUeMac::GetDiscTxPool ()
+NistLteUeMac::GetDiscTxPool ()
 {
   NS_LOG_FUNCTION (this);
   return m_discTxPools.m_pool; 
