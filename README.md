@@ -15,9 +15,11 @@ After installing [ns-3.22](https://www.nsnam.org/releases/ns-3-22/), you just ne
 
 ## Building with waf
 Before running one of the scripts from the `examples` folder, configure the build with the following command:
+
 `CXXFLAGS="-Wall -g -O0" ./waf configure --disable-python --enable-examples --disable-tests --build-profile=optimized`
 
 and then build the optimized ns-3 programs typing
+
 `./waf`
 
 # About
