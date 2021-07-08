@@ -21,8 +21,8 @@
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NIST_LTE_UE_MAC_ENTITY_H
-#define NIST_LTE_UE_MAC_ENTITY_H
+#ifndef NR_V2X_UE_MAC_ENTITY_H
+#define NR_V2X_UE_MAC_ENTITY_H
 
 
 
@@ -34,6 +34,7 @@
 #include <ns3/nist-lte-ue-cphy-sap.h>
 #include <ns3/nist-lte-ue-phy-sap.h>
 #include <ns3/nist-lte-amc.h>
+#include <ns3/nr-v2x-amc.h>
 #include <ns3/nstime.h>
 #include <ns3/event-id.h>
 #include <vector>
@@ -42,12 +43,13 @@
 #include "ns3/traced-value.h"
 #include "ns3/trace-source-accessor.h"
 
+
 #include <cctype>
 namespace ns3 {
 
 class UniformRandomVariable;
 
-class NistLteUeMac :   public Object
+class NrV2XUeMac :   public Object
 {
   friend class NistUeMemberLteUeCmacSapProvider;
   friend class NistUeMemberLteMacSapProvider;
@@ -56,8 +58,8 @@ class NistLteUeMac :   public Object
 public:
   static TypeId GetTypeId (void);
 
-  NistLteUeMac ();
-  virtual ~NistLteUeMac ();
+  NrV2XUeMac ();
+  virtual ~NrV2XUeMac ();
   virtual void DoDispose (void);
 
   NistLteMacSapProvider*  GetNistLteMacSapProvider (void);
@@ -96,30 +98,6 @@ public:
   * \param subframeNo subframe number
   */
   void DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo);
-
- /**
-  * Assign a fixed random variable stream number to the random variables
-  * used by this model.  Return the number of streams (possibly zero) that
-  * have been assigned.
-  *
-  * \param stream first stream index to use
-  * \return the number of stream indices assigned by this model
-  */
-  int64_t AssignStreams (int64_t stream);
-
-  /**
-   * \return the UE scheduler type
-   *
-   * This allows you to get access to the Ul scheduler value in the UE side.
-   */
-  std::string GetNistUlScheduler (void) const;
-
-  /**
-   * \set the UE scheduler type
-   *
-   * \param sched is the UE scheduler to set in the UE side 
-   */
-  void SetNistUlScheduler (std::string sched);
 
   /**
    * \return the UE selected resource mapping type
@@ -304,7 +282,10 @@ private:
    /*Subchannelization scheme*/
   uint16_t m_nsubCHsize;
   uint16_t m_L_SubCh;
-  
+  uint16_t m_BW_RBs;
+  double m_slotDuration;
+  uint16_t m_numerologyIndex;
+
   bool m_randomSelection; 
 
   std::map <SidelinkLcIdentifier, NistLteMacSapProvider::NistReportBufferNistStatusParameters> m_slBsrReceived; // BSR received from RLC (the last one)
@@ -331,13 +312,11 @@ private:
     uint16_t m_resPssch; // m in specifications
     uint8_t m_tpc;
 
+    uint16_t m_rbStartPssch; //models rb assignment
+    uint16_t m_rbLenPssch;   //models rb assignment: reservation size
 
-    uint8_t m_rbStartPssch; //models rb assignment
-    uint8_t m_rbLenPssch;   //models rb assignment: reservation size
-    uint8_t m_rbLenPssch_Actual;   //models rb assignment: the actual TB size
-
-    uint8_t m_rbStartPscch; //models rb assignment
-    uint8_t m_rbLenPscch;   //models rb assignment
+    uint16_t m_rbStartPscch; //models rb assignment
+    uint16_t m_rbLenPscch;   //models rb assignment
     //uint8_t m_trp;
 
     //other fields
@@ -350,15 +329,67 @@ private:
 
 
     /*Resource Reservation Fields*/
-    uint32_t m_pRsvpTx; // Reservation period: offset from next expected Tx [subframes]
-    uint8_t m_reservation;  
+    uint32_t m_RRI; // Reservation period: offset from next expected Tx [ms]
+
+//    uint16_t m_reservation;  
     uint32_t m_Cresel; // the Relelection Counter
     uint32_t m_nextReservedFrame;
     uint32_t m_nextReservedSubframe;
 
+    uint32_t m_ReEvaluationFrame;
+    uint32_t m_ReEvaluationSubframe;
+
+    bool m_EnableReEvaluation;
+    uint16_t m_SelectionTrigger;
    
   };
 
+  struct UeSelectionInfo
+  {
+    V2XSidelinkGrant selGrant;
+    double RSRPthresh;
+    uint32_t iterations;
+    double time;
+    SidelinkCommResourcePool::SubframeInfo selFrame;
+    uint32_t nodeId;
+    uint32_t nCSRfinal;
+    uint32_t nCSRpastTx;
+    uint32_t nCSRinitial;
+    double pdb;
+  };
+
+  // Variables to store output data
+  static std::vector<UeSelectionInfo> SelectedGrants;
+  static double prevPrintTime_selection;
+
+  struct UeReEvaluationInfo
+  {
+    uint32_t nodeId;
+    double time;
+    SidelinkCommResourcePool::SubframeInfo ReEvalSF;
+    SidelinkCommResourcePool::SubframeInfo LastReEvalSF;
+    SidelinkCommResourcePool::SubframeInfo CheckSF;
+    uint16_t CheckCSR;
+    bool freshGrant;
+    bool reSelection;
+    uint16_t reSelectionType;
+  };
+
+  // Variables to store output data
+  static std::vector<UeReEvaluationInfo> ReEvaluationStats;
+  static double prevPrintTime_reEvaluation;
+
+  struct TxPacketInfo
+  {
+    uint32_t packetID;
+    double txTime;
+    uint16_t selTrigger;
+    bool announced;
+  };
+
+  // Variables to store output data
+  static std::vector<TxPacketInfo> TxPacketsStats;
+  static double prevPrintTime_packetInfo;
 
   struct PoolInfo
   {
@@ -396,39 +427,77 @@ private:
   std::list <uint32_t> m_sidelinkDestinations;
 
   Ptr<NistLteAmc> m_amc; //needed now since UE is doing scheduling
+  Ptr<NrV2XAmc> m_NRamc; // New Radio (NR) Adaptive Modulation and Coding (AMC)
   Ptr<UniformRandomVariable> m_ueSelectedUniformVariable;
 
   //fields for fixed UE_SELECTED pools
-  uint8_t m_slKtrp;
   uint8_t m_slGrantMcs;
-  uint8_t m_slGrantSize;
-  uint8_t m_pucchSize;
+
 
   //TODO FIXME NEW
   //fields for V2X Communication V2X V2X V2X V2X V2X V2X V2X V2X V2X
   uint8_t m_SFGap; //Time gap [subframes] between initial transmission and retransmission
+  
+  enum reselectionTrigger
+  {
+    COUNTER = 0,
+    LATENCYandSIZE = 1,
+    LATENCY = 2,
+    SIZE = 3,
+    ReEVALUATION = 4
+  };
 
+  SidelinkCommResourcePool::SubframeInfo m_prevListUpdate; //Clean past tx and sensed subframe list removing subframes older than the selection window
+  void UpdatePastTxInfo (uint16_t current_frameNo, uint16_t current_subframeNo);
+  void UpdateSensedCSR (uint16_t current_frameNo, uint16_t current_subframeNo);
 
   uint32_t m_UnutilizedReservations;
+  uint32_t m_UnutilizedSubchannels;
+  uint32_t m_ReservedSubchannels;
   uint32_t m_Reservations;
   uint32_t m_LatencyReselections;
+  uint32_t m_SizeReselections;
   uint32_t m_CounterReselections;
   uint32_t m_TotalTransmissions;
   double m_prevPrintTime;
 
   bool m_List2Enabled;
-  bool m_useTxCresel;
+
   bool m_useRxCresel;
 
+  uint16_t m_debugNode;
+
   bool m_aggressive;
-  bool m_standardSSPS;
+  bool m_oneShot;
   bool m_submissive;
 //  bool m_useMode4;
 //  bool m_useMode2;
 
-  uint16_t GetSubchannelsNumber (uint16_t TBsize);
+  bool m_allSlotsReEvaluation;
 
-  std::string m_NistUlScheduler;      // the UE scheduler attribute 
+  double m_keepProbability;
+  Ptr<UniformRandomVariable> m_evalKeepProb;
+
+  double m_sizeThreshold;
+  double m_rsrpThreshold;
+  uint16_t m_sensingWindow;
+
+  std::string m_outputPath;
+  double m_savingPeriod;
+
+  bool m_oneShotGrant;
+//  uint16_t SubtractFrames (uint16_t frameAhead, uint16_t frame, uint16_t subframeAhead, uint16_t subframe);
+  uint16_t GetTproc0 (uint16_t numerologyIndex);
+  uint16_t GetTproc1 (uint16_t numerologyIndex);
+ 
+  uint32_t GetCresel (uint32_t RRI);
+
+
+//  void ReEvaluateResources (V2XSidelinkGrant currentV2Xgrant, NistLteMacSapProvider::NistReportBufferNistStatusParameters pktParams);
+  void ReEvaluateResources (SidelinkCommResourcePool::SubframeInfo currentSF, std::map <uint32_t, PoolInfo>::iterator IT, NistLteMacSapProvider::NistReportBufferNistStatusParameters pktParams);
+
+
+  void UnimoreUpdateReservation (std::map <uint32_t, PoolInfo>::iterator poolIt);
 
   //discovery
   struct DiscGrant
@@ -471,23 +540,23 @@ private:
    * Trace information regarding SL UE scheduling.
    * Frame number, Subframe number, RNTI, MCS, PSCCH resource index, PSSCH RB start, PSSCH lenght in RBs, PSSCH TRP index
    */
- TracedCallback<NistSlUeMacStatParameters> m_slUeScheduling;
+  TracedCallback<NistSlUeMacStatParameters> m_slUeScheduling;
  
- TracedCallback<NistSlUeMacStatParameters> m_slSharedChUeScheduling;
+  TracedCallback<NistSlUeMacStatParameters> m_slSharedChUeScheduling;
 
- /**
-  * True if there is data to transmit in the PSSCH
-  */
- bool m_slHasDataToTx;
- //The PHY notifies the change of timing as consequence of a change of SyncRef, the MAC adjust its timing
- void DoNotifyChangeOfTiming (uint32_t frameNo, uint32_t subframeNo);
+  /**
+   * True if there is data to transmit in the PSSCH
+   */
+  bool m_slHasDataToTx;
+  //The PHY notifies the change of timing as consequence of a change of SyncRef, the MAC adjust its timing
+  void DoNotifyChangeOfTiming (uint32_t frameNo, uint32_t subframeNo);
  
 
 
 
- //TODO FIXME NEW for V2X
+  //TODO FIXME NEW for V2X
 
- struct PsschRsrp
+  struct PsschRsrp
   {
     uint16_t rbStart;
     uint16_t rbLen;
@@ -502,79 +571,92 @@ private:
   uint32_t m_tmpFrameNo;
   uint32_t m_tmpSubframeNo;
 
-  V2XSidelinkGrant m_aperiodicV2XGrant; //aperiodic V2X grant
-  void UnimoreUpdateReservation (V2XSidelinkGrant *V2Xgrant);
+  std::vector<uint16_t> m_RRIvalues;
 
- //TODO FIXME NEW for V2X Sensing-Based SPS
- struct ReservedCSR
+  bool m_reEvaluation;
+
+  V2XSidelinkGrant m_aperiodicV2XGrant; //aperiodic V2X grant
+  V2XSidelinkGrant m_tmpV2XGrant; //aperiodic V2X grant
+
+
+  //TODO FIXME NEW for V2X Sensing-Based SPS
+  struct ReservedCSR
   {
     uint16_t rbStart;
     uint16_t rbLen;
     double psschRsrpDb;
     Time reservationTime; //when the reservation was received
+    SidelinkCommResourcePool::SubframeInfo reservedSF;
     uint32_t CreselRx; // the number of times the given resource is expected to be repeated in the future
     uint32_t nodeId;
     uint16_t RRI;
   };
 
   //std::map <SidelinkCommResourcePool::SubframeInfo,ReservedCSR> m_sensedReservedCSRMap;
-  void UnimorePrintSensedCSR (std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR> > SensedResources_Map);  // print the sensed CSRs
-  std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, ReservedCSR> > m_sensedReservedCSRMap;
+  void UnimorePrintCSR (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Map);
+  void UnimorePrintSensedCSR (std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, std::vector<ReservedCSR>> > SensedResources_Map, SidelinkCommResourcePool::SubframeInfo currentSF, bool save);  // print the sensed CSRs
+ // void UnimoreSaveSensedCSR (std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, std::vector<ReservedCSR>> > SensedResources_Map, SidelinkCommResourcePool::SubframeInfo currentSF);  // save the sensed CSRs
+
+  std::map <uint16_t, std::map<SidelinkCommResourcePool::SubframeInfo, std::vector<ReservedCSR> > > m_sensedReservedCSRMap;
 
   /*Map to store the past transmission information*/
   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > m_pastTxMap;
  
   struct CandidateCSR
-   {
-       uint16_t rbStart; //maybe redundant
-       uint16_t rbLen;   //maybe redundant
-       uint16_t nSubCHStart;
-       SidelinkCommResourcePool::SubframeInfo subframe;   
-   }; 
+  {
+    uint16_t rbStart; //maybe redundant
+    uint16_t rbLen;   //maybe redundant
+    uint16_t nSubCHStart;
+    SidelinkCommResourcePool::SubframeInfo subframe;   
+  }; 
 
   struct CandidateCSRl2
-   {
-       uint16_t CSRIndex;
-       SidelinkCommResourcePool::SubframeInfo subframe;   
-       double rssi;
-   };
+  {
+    uint16_t CSRIndex;
+    SidelinkCommResourcePool::SubframeInfo subframe;   
+    double rssi;
+  };
 
 
- /**
+  /**
   * Method to store PSSCH-RSRP measurement results coming from PHY layer 
   */
- void DoReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb);
+  void DoReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb);
 
- void DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI);
+  void DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI);
 
-//TODO FIXME NEW for V2X
-
-  SidelinkCommResourcePool::SubframeInfo SimulatorTimeToSubframe (Time time);
- /**
+  /**
   * Method to count the residual CSRs for LTE-V2V UE_SELECTED Mode 4 
   */
 
-uint32_t ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1);
+  uint32_t ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1);
 
- /**
+  /**
   * Method to compare  CandidateCSRl2 elements based on their average S-RSSI
   */
-bool CompareRssi (const CandidateCSRl2 res1, const CandidateCSRl2 res2);
+  bool CompareRssi (const CandidateCSRl2 res1, const CandidateCSRl2 res2);
 
- /**
-  * Method to select resources in LTE-V2V UE_SELECTED Mode 4 
+  /**
+  * Method to select resources in LTE-V2X UE_SELECTED Mode 4 
+  * Method to select resources in NR-V2X UE_SELECTED Mode 2 
   */
-V2XSidelinkGrant V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, V2XSidelinkGrant V2XGrant, uint32_t pdb, uint32_t p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize);
+  //V2XSidelinkGrant V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, V2XSidelinkGrant V2XGrant, uint32_t pdb, uint32_t p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize);
+  V2XSidelinkGrant V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pdb, uint32_t p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize, reselectionTrigger V2Xtrigger);
 
 
- /**
+  std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo>> SelectionWindow (SidelinkCommResourcePool::SubframeInfo currentSF, uint32_t T_2_slots, uint16_t N_CSR_per_SF);
+
+  std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo>> Mode2Step1 (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, SidelinkCommResourcePool::SubframeInfo currentSF, V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint32_t *iterationsCounter, double *psschThresh, uint32_t *nCSRpartial, bool saveData);
+
+  std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo>> Mode2Step1_RemovePastTx (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, SidelinkCommResourcePool::SubframeInfo currentSF, V2XSidelinkGrant V2XGrant, double T_2);
+
+  /**
   * Method to store Tx events for scheduling assistance in LTE-V2V UE_SELECTED Mode 4 
   */
-void
-DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart, uint16_t rbLen);
+  void DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart, uint16_t rbLen);
 
 };
 
 } // namespace ns3
 
-#endif // LTE_UE_MAC_ENTITY
+#endif // NR_V2X_UE_MAC_ENTITY

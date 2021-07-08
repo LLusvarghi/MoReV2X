@@ -196,13 +196,13 @@ struct NistV2XSciListElement_s // SCI Format 1
   uint16_t  m_rnti;
   uint8_t   m_resPscch;       //added for modeling
   uint8_t   m_hopping;
-  uint8_t   m_rbStart; //models rb assignment for PSSCH
-  uint8_t   m_rbLen;   //models rb assignment for PSSCH: the reserved RBs
-  uint8_t   m_rbLen_TB;   //models rb assignment for PSSCH: the actual RBs used for the transmission
+  uint16_t   m_rbStartPssch; //models rb assignment for PSSCH
+  uint16_t   m_rbLenPssch;   //models rb assignment for PSSCH: the reserved RBs
+  uint16_t   m_rbLenPssch_TB;   //models rb assignment for PSSCH: the actual RBs used for the transmission
 
   /*Maybe not really needed*/
-  uint8_t   m_rbStartPscch; //models rb assignment for PSCCH
-  uint8_t   m_rbLenPscch;   //models rb assignment for PSCCH: must be set to 2
+  uint16_t   m_rbStartPscch; //models rb assignment for PSCCH
+  uint16_t   m_rbLenPscch;   //models rb assignment for PSCCH: must be set to 2
 
   uint16_t  m_tbSize;  //added for modeling
   uint8_t   m_mcs;
@@ -212,8 +212,9 @@ struct NistV2XSciListElement_s // SCI Format 1
   uint8_t m_pppp;
   uint8_t m_SFGap; //Time gap between initial transmission and retransmission [subframes]
   //uint16_t m_riv;
-  uint8_t m_reservation; //real field
+  uint16_t m_reservation; //real field
   SidelinkCommResourcePool::SubframeInfo m_reservedSubframe; //fake field holding the exact subframe information
+  SidelinkCommResourcePool::SubframeInfo m_receivedSubframe; //the subframe at which the reservation has been received
 
   uint8_t m_reTxIndex; // 1 if second transmission
 
@@ -222,6 +223,7 @@ struct NistV2XSciListElement_s // SCI Format 1
 
   double m_psschRsrpDb; // fake field set receiver-side within SpectrumPhy to convey information about the detected PSSCH-RSRP
                          // over the RBs carrying the TB associated with this SCI
+  uint64_t m_packetID;
 };
  
 struct NistSlDiscMsg

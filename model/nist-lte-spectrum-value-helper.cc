@@ -18,6 +18,7 @@
  * Author: Giuseppe Piro  <g.piro@poliba.it>
  *         Nicola Baldo <nbaldo@cttc.es>
  * Modified by: NIST
+ * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
 #include <map>
@@ -25,6 +26,8 @@
 
 #include <ns3/log.h>
 #include <ns3/fatal-error.h>
+#include <algorithm>
+#include <fstream>
 
 #include "nist-lte-spectrum-value-helper.h"
 
@@ -259,26 +262,93 @@ NistLteSpectrumValueHelper::CreateTxPowerSpectralDensity (uint16_t earfcn, uint8
 }
 
 Ptr<SpectrumValue> 
-NistLteSpectrumValueHelper::CreateUlTxPowerSpectralDensity (uint16_t earfcn, uint8_t txBandwidthConfiguration, double powerTx, std::vector <int> activeRbs)
+NistLteSpectrumValueHelper::CreateUlTxPowerSpectralDensity (uint16_t earfcn, uint16_t txBandwidthConfiguration, double powerTx, std::vector <int> activeRbs, double slotDuration, uint16_t SCS, uint16_t mcsIndex, bool IBE)
 {
-  NS_LOG_FUNCTION (earfcn << (uint16_t) txBandwidthConfiguration << powerTx << activeRbs);
+  NS_LOG_FUNCTION ((uint16_t) txBandwidthConfiguration << powerTx << activeRbs << SCS << mcsIndex);
+
+  bool InBandEmissions = IBE;
+  if (InBandEmissions)
+    NS_ASSERT_MSG(powerTx > 10, "In-band emissions are implemented only for Tx power > 10 dBm");
 
   Ptr<SpectrumModel> model = GetSpectrumModel (earfcn, txBandwidthConfiguration);
   Ptr<SpectrumValue> txPsd = Create <SpectrumValue> (model);
 
+  double EVM;
+  if (mcsIndex <= 9) //QPSK
+    EVM = 17.5;
+  else if ((mcsIndex >= 10) && (mcsIndex <= 16)) //16QAM
+    EVM = 12.5;
+  else  //64 QAM
+    EVM = 8.0;
+
   // powerTx is expressed in dBm. We must convert it into natural unit.
   double powerTxW = std::pow (10., (powerTx - 30) / 10);
 
-  double txPowerDensity = (powerTxW / (activeRbs.size() * 180000));
+  double txPowerDensity = (powerTxW / (activeRbs.size() * 180000 / slotDuration));
+//  double txPowerDensity = powerTxW / activeRbs.size();
+//  double txPowerDensity = powerTxW;
+
+  NS_LOG_INFO("Transmission power is " << powerTx << " dBm. The Tx power density is " << txPowerDensity << " W/Hz with slot duration: " << slotDuration << " ms");
   
-  for (std::vector <int>::iterator it = activeRbs.begin (); it != activeRbs.end (); it++)
+  double P_rb = powerTx - activeRbs.size();
+  double attenuation_IQ = -28, attenuation_CarrLeakage = -28;
+
+  std::vector<double> attenuation_values; // store the attenuation value in dB
+
+  for (int rbId = 0; rbId < txBandwidthConfiguration; rbId++)
+  {
+    if (std::find(activeRbs.begin(), activeRbs.end(), rbId) != activeRbs.end())
+      (*txPsd)[rbId] = txPowerDensity; //the same for all the active RBs
+    else
+    {
+      if (InBandEmissions)
+      {
+        double tmp, attenuation_general, attenuation_total, attenuation;
+        if (rbId < activeRbs.front())
+          tmp = std::max(-25 - 10*std::log10(txBandwidthConfiguration/activeRbs.size()), 20*std::log10(EVM) -3 -5*(activeRbs.front() - rbId -1)/activeRbs.size() );
+        else
+          tmp = std::max(-25 - 10*std::log10(txBandwidthConfiguration/activeRbs.size()), 20*std::log10(EVM) -3 -5*(rbId - activeRbs.back() -1)/activeRbs.size() );
+        attenuation_general = std::max(tmp, -57 + 10*std::log10(SCS/15) - P_rb );
+
+        attenuation_total = attenuation_general + attenuation_IQ + attenuation_CarrLeakage;
+        NS_LOG_DEBUG("Attenuation: general = " << attenuation_general << ", IQ = " << attenuation_IQ << ", Carrier leakage = " << attenuation_CarrLeakage << ". Total = " << attenuation_total);
+        attenuation = std::max(attenuation_total, P_rb-30);
+        NS_LOG_DEBUG(attenuation << " dB attenuation on RB " << rbId);
+
+        attenuation_values.push_back(attenuation);
+
+        (*txPsd)[rbId] = txPowerDensity * std::pow(10, attenuation/10);
+      }
+      else
+        (*txPsd)[rbId] = 0; 
+    }
+  }
+
+ /* for (std::vector <int>::iterator it = activeRbs.begin (); it != activeRbs.end (); it++)
     {
       int rbId = (*it);
-
+      NS_LOG_INFO("RB ID " <<rbId);
       (*txPsd)[rbId] = txPowerDensity; //the same for all the RBs
-    }
+    }*/
 
-  NS_LOG_LOGIC (*txPsd);
+  if (InBandEmissions && attenuation_values.size() > 0)
+  {
+    double avgAttenuation = 0;
+    for (uint16_t kk = 0; kk < attenuation_values.size(); kk++)
+      avgAttenuation += attenuation_values[kk];
+    avgAttenuation /= attenuation_values.size();
+    NS_LOG_DEBUG("Average attenuation = " << avgAttenuation << " dB");
+
+/*    std::ofstream IBElog;
+    IBElog.open ("results/sidelink/IBE.txt", std::ios_base::app);
+    IBElog << powerTx << "," << SCS << "," << avgAttenuation << std::endl;
+    IBElog.close();*/
+
+  }
+
+  NS_LOG_LOGIC ("TX PSD: " << *txPsd);
+
+  //std::cin.get();
 
   return txPsd;
 }
@@ -335,7 +405,6 @@ NistLteSpectrumValueHelper::CreateNoisePowerSpectralDensity (double noiseFigureD
 {
   NS_LOG_FUNCTION (noiseFigureDb << spectrumModel);
 
-
   // see "LTE - From theory to practice"
   // Section 22.4.4.2 Thermal Noise and Receiver Noise Figure
   const double kT_dBm_Hz = -174.0;  // dBm/Hz
@@ -346,7 +415,7 @@ NistLteSpectrumValueHelper::CreateNoisePowerSpectralDensity (double noiseFigureD
   Ptr<SpectrumValue> noisePsd = Create <SpectrumValue> (spectrumModel);
   (*noisePsd) = noisePowerSpectralDensity;
 //  NS_LOG_UNCOND("Noise figure " << noiseFigureDb << " kt_W_Hz " << kT_W_Hz << " noisePSD " << noisePowerSpectralDensity);
-//   std::cin.get();
+//  std::cin.get();
   return noisePsd;
 }
 

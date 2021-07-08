@@ -487,7 +487,7 @@ NistLteUePowerControl::GetSrsTxPower (std::vector <int> dlRb)
 
 // NIST
 // Get Tx Power for PSSCH and PSCCH channels for D2D 
-// to be called in NistLteUePhy class
+// to be called in NrV2XUePhy class
 double
 NistLteUePowerControl::GetPsschTxPower (std::vector <int> dlRb)
 {

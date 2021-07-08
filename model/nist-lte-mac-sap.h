@@ -96,6 +96,7 @@ public:
     uint32_t srcL2Id;  /**< Source L2 ID (24 bits) */
     uint32_t dstL2Id;  /**< Destination L2 ID (24 bits) */
 
+    double V2XGenTime;
     
     /* Additional fields for V2X sidelink */
     bool alreadyUESelected; /**< checks whether allocation has already been done */
@@ -110,6 +111,7 @@ public:
     uint32_t V2XPdb;  /**< the V2X Packet Delay Budget */
     uint32_t V2XPrsvp;  /**< the V2X Packet Reservation Period --> only used for Mode 4 */
     uint32_t V2XMcs;  /**< the MCS to be used for transmission --> only used for Mode 4 */
+    uint64_t V2XPacketID;  /**< the MCS to be used for transmission --> only used for Mode 4 */
 
     V2XHigherLayerPerPacketRequirements requirements; /**< the higher-layer requirements for this V2X packet */
   };

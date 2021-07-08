@@ -26,7 +26,7 @@
 #include <cmath>
 
 // see 36.213 section 8
-#define UL_PUSCH_TTIS_DELAY 4
+#define UL_PUSCH_TTIS_DELAY 0
 
 #define HARQ_PERIOD 7
 

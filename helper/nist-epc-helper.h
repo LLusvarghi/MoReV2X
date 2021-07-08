@@ -19,6 +19,7 @@
  *         Nicola Baldo <nbaldo@cttc.es>
  *         Manuel Requena <manuel.requena@cttc.es>
  * Modified by: NIST
+ * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
 #ifndef NIST_EPC_HELPER_H
@@ -37,7 +38,6 @@ class Node;
 class NetDevice;
 class VirtualNetDevice;
 class NistEpcSgwPgwApplication;
-class NistEpcX2;
 class NistEpcMme;
 
 /**
@@ -71,17 +71,6 @@ public:
   static TypeId GetTypeId (void);
   virtual void DoDispose ();
 
-  
-  /** 
-   * Add an eNB to the EPC
-   * 
-   * \param enbNode the previosuly created eNB node which is to be
-   * added to the EPC
-   * \param lteEnbNetDevice the NistLteEnbNetDevice of the eNB node
-   * \param cellId ID of the eNB
-   */
-  virtual void AddEnb (Ptr<Node> enbNode, Ptr<NetDevice> lteEnbNetDevice, uint16_t cellId) = 0;
-
   /** 
    * Notify the EPC of the existance of a new UE which might attach at a later time
    * 
@@ -89,14 +78,6 @@ public:
    * \param imsi the unique identifier of the UE
    */
   virtual void AddUe (Ptr<NetDevice> ueLteDevice, uint64_t imsi) = 0;
-
-  /** 
-   * Add an X2 interface between two eNB
-   * 
-   * \param enbNode1 one eNB peer of the X2 interface
-   * \param enbNode2 the other eNB peer of the X2 interface
-   */
-  virtual void AddX2Interface (Ptr<Node> enbNode1, Ptr<Node> enbNode2) = 0;
 
   /** 
    * Activate an EPS bearer, setting up the corresponding S1-U tunnel.

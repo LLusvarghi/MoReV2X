@@ -94,6 +94,7 @@ private:
   EventId m_reorderingTimer;
   EventId m_rbsTimer;
 
+  std::string m_outputPath;
   /**
    * Reassembling state
    */

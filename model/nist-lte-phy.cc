@@ -27,6 +27,7 @@
 #include "ns3/spectrum-error-model.h"
 #include "nist-lte-phy.h"
 #include "nist-lte-net-device.h"
+#include <ns3/double.h>
 
 namespace ns3 {
 
@@ -41,10 +42,11 @@ NistLtePhy::NistLtePhy ()
   NS_FATAL_ERROR ("This constructor should not be called");
 }
 
-NistLtePhy::NistLtePhy (Ptr<NistLteSpectrumPhy> dlPhy, Ptr<NistLteSpectrumPhy> ulPhy)
+NistLtePhy::NistLtePhy (Ptr<NrV2XSpectrumPhy> dlPhy, Ptr<NrV2XSpectrumPhy> ulPhy)
   : m_downlinkSpectrumPhy (dlPhy),
     m_uplinkSpectrumPhy (ulPhy),
-    m_tti (0.001),
+//    m_tti (0.001),
+//    m_tti (0.0005),
     m_ulBandwidth (0),
     m_dlBandwidth (0),
     m_rbgSize (0),
@@ -60,6 +62,11 @@ NistLtePhy::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::NistLtePhy")
     .SetParent<Object> ()
+    .AddAttribute ("TTI",
+                   "PHY layer TTI",
+		   DoubleValue (0.001),
+		   MakeDoubleAccessor (&NistLtePhy::m_tti),
+		   MakeDoubleChecker<double> ())
   ;
   return tid;
 }
@@ -99,13 +106,13 @@ NistLtePhy::GetDevice ()
   return m_netDevice;
 }
 
-Ptr<NistLteSpectrumPhy> 
+Ptr<NrV2XSpectrumPhy> 
 NistLtePhy::GetDownlinkSpectrumPhy ()
 {
   return m_downlinkSpectrumPhy;
 }
 
-Ptr<NistLteSpectrumPhy> 
+Ptr<NrV2XSpectrumPhy> 
 NistLtePhy::GetUplinkSpectrumPhy ()
 {
   return m_uplinkSpectrumPhy;

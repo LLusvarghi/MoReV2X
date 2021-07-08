@@ -29,7 +29,7 @@
 
 #include <ns3/nist-lte-rlc.h>
 #include <ns3/nist-lte-rlc-tm.h>
-#include <ns3/nist-lte-rlc-um.h>
+#include <ns3/nr-v2x-rlc-um.h>
 #include <ns3/nist-lte-rlc-am.h>
 #include <ns3/nist-lte-pdcp.h>
 #include <ns3/nist-lte-radio-bearer-info.h>
@@ -41,7 +41,7 @@
 #include <fstream>
 #include <iostream>
 
-#include "ns3/v2x-lte-tag.h"
+#include "ns3/nr-v2x-tag.h"
 
 
 namespace ns3 {

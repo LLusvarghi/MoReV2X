@@ -30,24 +30,16 @@
 #include <ns3/node.h>
 #include <ns3/node-container.h>
 #include <ns3/nist-eps-bearer.h>
-#include <ns3/nist-phy-stats-calculator.h>
-#include <ns3/nist-phy-tx-stats-calculator.h>
-#include <ns3/nist-phy-rx-stats-calculator.h>
-#include <ns3/nist-mac-stats-calculator.h>
-#include <ns3/nist-radio-bearer-stats-calculator.h>
-#include <ns3/nist-radio-bearer-stats-connector.h>
 #include <ns3/nist-epc-tft.h>
-#include <ns3/nist-lte-enb-rrc.h>
 #include <ns3/nist-lte-ue-rrc.h>
-#include <ns3/nist-lte-spectrum-phy.h>
+#include <ns3/nr-v2x-spectrum-phy.h>
 #include <ns3/mobility-model.h>
 #include <ns3/nist-sl-tft.h>
 
 namespace ns3 {
 
 
-class NistLteUePhy;
-class NistLteEnbPhy;
+class NrV2XUePhy;
 class SpectrumChannel;
 class NistEpcHelper;
 class PropagationLossModel;
@@ -126,19 +118,6 @@ public:
    */
   void SetEpcHelper (Ptr<NistEpcHelper> h);
 
-  /**
-   * Set eNBs created after this call to enable.
-   *
-   */
-  void EnableNewEnbPhy ();
-
-  /**
-   * Set eNBs created after this call to disable.
-   *
-   */
-  void DisableNewEnbPhy ();
-
-
   /** 
    * Set the type of path loss model to be used for both DL and UL channels.
    * 
@@ -167,118 +146,6 @@ public:
    */
   void SetPathlossModelAttribute (std::string n, const AttributeValue &v);
 
-  /** 
-   * Set the type of scheduler to be used by eNodeB devices.
-   * 
-   * \param type type of scheduler, must be a type name of any class
-   *             inheriting from ns3::NistFfMacScheduler, for example:
-   *             "ns3::PfNistFfMacScheduler"
-   *
-   * Equivalent with setting the `Scheduler` attribute.
-   */
-  void SetSchedulerType (std::string type);
-
-  /**
-   *
-   * \return the scheduler type
-   */
-  std::string GetSchedulerType () const; 
-
-  /** 
-   * Set the type of UL scheduler to be used by UEs devices.
-   *
-   * \param type the UE scheduler to set 
-   */
-  void SetUlSchedulerType (std::string type);
-
-  /**
-   *
-   * \return the UL scheduler type
-   */
-  std::string GetUlSchedulerType () const; 
-
-  /**
-   * Set an attribute for the scheduler to be created.
-   * 
-   * \param n the name of the attribute
-   * \param v the value of the attribute
-   */
-  void SetSchedulerAttribute (std::string n, const AttributeValue &v);
-
-  /**
-   * Set the type of FFR algorithm to be used by eNodeB devices.
-   *
-   * \param type type of FFR algorithm, must be a type name of any class
-   *             inheriting from ns3::NistLteFfrAlgorithm, for example:
-   *             "ns3::NistLteFrNoOpAlgorithm"
-   *
-   * Equivalent with setting the `FfrAlgorithm` attribute.
-   */
-  void SetFfrAlgorithmType (std::string type);
-
-  /**
-   *
-   * \return the FFR algorithm type
-   */
-  std::string GetFfrAlgorithmType () const;
-
-  /**
-   * Set an attribute for the FFR algorithm to be created.
-   *
-   * \param n the name of the attribute
-   * \param v the value of the attribute
-   */
-  void SetFfrAlgorithmAttribute (std::string n, const AttributeValue &v);
-
-  /**
-   * Set the type of handover algorithm to be used by eNodeB devices.
-   *
-   * \param type type of handover algorithm, must be a type name of any class
-   *             inheriting from ns3::NistLteHandoverAlgorithm, for example:
-   *             "ns3::NistNoOpHandoverAlgorithm"
-   *
-   * Equivalent with setting the `HandoverAlgorithm` attribute.
-   */
-  void SetHandoverAlgorithmType (std::string type);
-
-  /**
-   *
-   * \return the handover algorithm type
-   */
-  std::string GetHandoverAlgorithmType () const;
-
-  /**
-   * Set an attribute for the handover algorithm to be created.
-   *
-   * \param n the name of the attribute
-   * \param v the value of the attribute
-   */
-  void SetHandoverAlgorithmAttribute (std::string n, const AttributeValue &v);
-
-  /**
-   * Set an attribute for the eNodeB devices (NistLteEnbNetDevice) to be created.
-   * 
-   * \param n the name of the attribute.
-   * \param v the value of the attribute
-   */
-  void SetEnbDeviceAttribute (std::string n, const AttributeValue &v);
-
-  /** 
-   * Set the type of antenna model to be used by eNodeB devices.
-   * 
-   * \param type type of antenna model, must be a type name of any class
-   *             inheriting from ns3::AntennaModel, for example:
-   *             "ns3::IsotropicAntennaModel"
-   */
-  void SetEnbAntennaModelType (std::string type);
-
-  /**
-   * Set an attribute for the eNodeB antenna model to be created.
-   * 
-   * \param n the name of the attribute.
-   * \param v the value of the attribute
-   */
-  void SetEnbAntennaModelAttribute (std::string n, const AttributeValue &v);
 
   /**
    * Set an attribute for the UE devices (NistLteUeNetDevice) to be created.
@@ -321,14 +188,6 @@ public:
    * \param v the value of the attribute
    */
   void SetSpectrumChannelAttribute (std::string n, const AttributeValue &v);
-
-  /**
-   * Create a set of eNodeB devices.
-   *
-   * \param c the node container where the devices are to be installed
-   * \return the NetDeviceContainer with the newly created devices
-   */
-  NetDeviceContainer InstallEnbDevice (NodeContainer c);
 
   /**
    * Create a set of UE devices.
@@ -377,67 +236,6 @@ public:
   void Attach (Ptr<NetDevice> ueDevice);
 
   /**
-   * \brief Manual attachment of a set of UE devices to the network via a given
-   *        eNodeB.
-   * \param ueDevices the set of UE devices to be attached
-   * \param enbDevice the destination eNodeB device
-   *
-   * In addition, the function also instructs each UE to immediately enter
-   * CONNECTED mode and activates the default EPS bearer.
-   *
-   * The function can be used in both LTE-only and EPC-enabled simulations.
-   * Note that this function will disable Idle mode initial cell selection
-   * procedure.
-   */
-  void Attach (NetDeviceContainer ueDevices, Ptr<NetDevice> enbDevice);
-
-  /**
-   * \brief Manual attachment of a UE device to the network via a given eNodeB.
-   * \param ueDevice the UE device to be attached
-   * \param enbDevice the destination eNodeB device
-   *
-   * In addition, the function also instructs the UE to immediately enter
-   * CONNECTED mode and activates the default EPS bearer.
-   *
-   * The function can be used in both LTE-only and EPC-enabled simulations.
-   * Note that this function will disable Idle mode initial cell selection
-   * procedure.
-   */
-  void Attach (Ptr<NetDevice> ueDevice, Ptr<NetDevice> enbDevice);
-
-  /** 
-   * \brief Manual attachment of a set of UE devices to the network via the
-   *        closest eNodeB (with respect to distance) among those in the set.
-   * \param ueDevices the set of UE devices to be attached
-   * \param enbDevices the set of eNodeB devices to be considered
-   * 
-   * This function finds among the eNodeB set the closest eNodeB for each UE,
-   * and then invokes manual attachment between the pair.
-   * 
-   * Users are encouraged to use automatic attachment (Idle mode cell selection)
-   * instead of this function.
-   * 
-   * \sa NistLteHelper::Attach(NetDeviceContainer ueDevices);
-   */
-  void AttachToClosestEnb (NetDeviceContainer ueDevices, NetDeviceContainer enbDevices);
-
-  /** 
-   * \brief Manual attachment of a UE device to the network via the closest
-   *        eNodeB (with respect to distance) among those in the set.
-   * \param ueDevice the UE device to be attached
-   * \param enbDevices the set of eNodeB devices to be considered
-   *
-   * This function finds among the eNodeB set the closest eNodeB for the UE,
-   * and then invokes manual attachment between the pair.
-   * 
-   * Users are encouraged to use automatic attachment (Idle mode cell selection)
-   * instead of this function.
-   *
-   * \sa NistLteHelper::Attach(Ptr<NetDevice> ueDevice);
-   */
-  void AttachToClosestEnb (Ptr<NetDevice> ueDevice, NetDeviceContainer enbDevices);
-
-  /**
    * Activate a dedicated EPS bearer on a given set of UE devices.
    *
    * \param ueDevices the set of UE devices
@@ -454,17 +252,6 @@ public:
    * \param tft the Traffic Flow Template that identifies the traffic to go on this bearer.
    */
   uint8_t ActivateDedicatedNistEpsBearer (Ptr<NetDevice> ueDevice, NistEpsBearer bearer, Ptr<NistEpcTft> tft);
-
-  /**
-   *  \brief Manually trigger dedicated bearer de-activation at specific simulation time
-   *  \param ueDevice the UE on which dedicated bearer to be de-activated must be of the type NistLteUeNetDevice
-   *  \param enbDevice eNB, must be of the type NistLteEnbNetDevice
-   *  \param bearerId Bearer Identity which is to be de-activated
-   *
-   *  \warning Requires the use of EPC mode. See SetNistEpcHelper() method.
-   */
-
-  void DeActivateDedicatedNistEpsBearer (Ptr<NetDevice> ueDevice, Ptr<NetDevice> enbDevice, uint8_t bearerId);
 
   /**
    * Activate a dedicated EPS bearer on a given set of UE devices.
@@ -535,38 +322,6 @@ public:
    */
   void StopDiscovery (Ptr<NetDevice> ueDevice, std::list<uint32_t> apps, bool rxtx);
 
-  /**
-   * Create an X2 interface between all the eNBs in a given set.
-   *
-   * \param enbNodes the set of eNB nodes
-   */
-  void AddX2Interface (NodeContainer enbNodes);
-
-  /**
-   * Create an X2 interface between two eNBs.
-   *
-   * \param enbNode1 one eNB of the X2 interface
-   * \param enbNode2 the other eNB of the X2 interface
-   */
-  void AddX2Interface (Ptr<Node> enbNode1, Ptr<Node> enbNode2);
-
-  /**
-   * Manually trigger an X2-based handover.
-   *
-   * \param hoTime when the handover shall be initiated
-   * \param ueDev the UE that hands off, must be of the type NistLteUeNetDevice
-   * \param sourceEnbDev source eNB, must be of the type NistLteEnbNetDevice
-   *                     (originally the UE is attached to this eNB)
-   * \param targetEnbDev target eNB, must be of the type NistLteEnbNetDevice
-   *                     (the UE would be connected to this eNB after the
-   *                     handover)
-   *
-   * \warning Requires the use of EPC mode. See SetNistEpcHelper() method
-   */
-  void HandoverRequest (Time hoTime, Ptr<NetDevice> ueDev,
-                        Ptr<NetDevice> sourceEnbDev, Ptr<NetDevice> targetEnbDev);
-
-
   /** 
    * Activate a Data Radio Bearer on a given UE devices (for LTE-only simulation).
    * 
@@ -606,145 +361,6 @@ public:
    * Enables full-blown logging for major components of the LENA architecture.
    */
   void EnableLogComponents (void);
-
-  /**
-   * Enables trace sinks for PHY, MAC, RLC and PDCP. To make sure all nodes are
-   * traced, traces should be enabled once all UEs and eNodeBs are in place and
-   * connected, just before starting the simulation.
-   */
-  void EnableTraces (void);
-
-  /**
-   * Enable trace sinks for PHY layer.
-   */
-  void EnablePhyTraces (void);
-
-  /**
-   * Enable trace sinks for DL PHY layer.
-   */
-  void EnableDlPhyTraces (void);
-
-  /**
-   * Enable trace sinks for UL PHY layer.
-   */
-  void EnableUlPhyTraces (void);
-
-  /**
-   * Enable trace sinks for SL PHY layer.
-   */
-  void EnableSlPhyTraces (void);
-
-  /**
-   * Enable trace sinks for DL transmission PHY layer.
-   */
-  void EnableDlTxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for UL transmission PHY layer.
-   */
-  void EnableUlTxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for SL transmission PHY layer.
-   */
-  void EnableSlTxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for DL reception PHY layer.
-   */
-  void EnableDlRxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for UL reception PHY layer.
-   */
-  void EnableUlRxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for SL reception PHY layer.
-   */
-  void EnableSlRxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for SL reception PHY layer.
-   */
-  void EnableSlPscchRxPhyTraces (void);
-
-  /**
-   * Enable trace sinks for MAC layer.
-   */
-  void EnableMacTraces (void);
-
-  /**
-   * Enable trace sinks for DL MAC layer.
-   */
-  void EnableDlMacTraces (void);
-
-  /**
-   * Enable trace sinks for UL MAC layer.
-   */
-  void EnableUlMacTraces (void);
-
-  /**
-   * Enable trace sinks for SL UE MAC layer.
-   */
-  void EnableSlUeMacTraces (void);
-
-  /**
-   * Enable trace sinks for SL UE MAC layer.
-   */
-  void EnableSlSchUeMacTraces (void);
-
-  /**
-   * Enable trace sinks for RLC layer.
-   */
-  void EnableRlcTraces (void);
-
-  /** 
-   * 
-   * \return the RLC stats calculator object
-   */
-  Ptr<NistRadioBearerStatsCalculator> GetRlcStats (void);
-
-  /**
-   * Enable trace sinks for PDCP layer
-   */
-  void EnablePdcpTraces (void);
-
-  /** 
-   * 
-   * \return the PDCP stats calculator object
-   */
-  Ptr<NistRadioBearerStatsCalculator> GetPdcpStats (void);
-
-  /**
-   * Assign a fixed random variable stream number to the random variables used.
-   *
-   * The InstallEnbDevice() or InstallUeDevice method should have previously
-   * been called by the user on the given devices.
-   *
-   * If NistTraceFadingLossModel has been set as the fading model type, this method
-   * will also assign a stream number to it, if none has been assigned before.
-   *
-   * \param c NetDeviceContainer of the set of net devices for which the
-   *          NistLteNetDevice should be modified to use a fixed stream
-   * \param stream first stream index to use
-   * \return the number of stream indices (possibly zero) that have been assigned
-  */
-  int64_t AssignStreams (NetDeviceContainer c, int64_t stream);
-
-  /**
-   * Deploys the Sidelink configuration to the eNodeBs
-   * \param enbDevices List of devices where to configure sidelink
-   * \param slConfiguration Sidelink configuration
-   */
-  void InstallSidelinkConfiguration (NetDeviceContainer enbDevices, Ptr<LteEnbRrcSl> slConfiguration);
-
-  /**
-   * Deploys the Sidelink configuration to the eNodeB
-   * \param enbDevice The eNodeB where to configure sidelink
-   * \param slConfiguration Sidelink configuration
-   */
-  void InstallSidelinkConfiguration (Ptr<NetDevice> enbDevice, Ptr<LteEnbRrcSl> slConfiguration);
 
   /**
    * Deploys the Sidelink configuration to the UEs
@@ -809,46 +425,11 @@ protected:
 
 private:
   /**
-   * Create an eNodeB device (NistLteEnbNetDevice) on the given node.
-   * \param n the node where the device is to be installed
-   * \return pointer to the created device
-   */
-  Ptr<NetDevice> InstallSingleEnbDevice (Ptr<Node> n);
-
-  /**
    * Create a UE device (NistLteUeNetDevice) on the given node
    * \param n the node where the device is to be installed
    * \return pointer to the created device
    */
   Ptr<NetDevice> InstallSingleUeDevice (Ptr<Node> n);
-
-  /**
-   * The actual function to trigger a manual handover.
-   * \param ueDev the UE that hands off, must be of the type NistLteUeNetDevice
-   * \param sourceEnbDev source eNB, must be of the type NistLteEnbNetDevice
-   *                     (originally the UE is attached to this eNB)
-   * \param targetEnbDev target eNB, must be of the type NistLteEnbNetDevice
-   *                     (the UE would be connected to this eNB after the
-   *                     handover)
-   *
-   * This method is normally scheduled by HandoverRequest() to run at a specific
-   * time where a manual handover is desired by the simulation user.
-   */
-  void DoHandoverRequest (Ptr<NetDevice> ueDev,
-                          Ptr<NetDevice> sourceEnbDev,
-                          Ptr<NetDevice> targetEnbDev);
-
-
-  /**
-   *  \brief The actual function to trigger a manual bearer de-activation
-   *  \param ueDevice the UE on which bearer to be de-activated must be of the type NistLteUeNetDevice
-   *  \param enbDevice eNB, must be of the type NistLteEnbNetDevice
-   *  \param bearerId Bearer Identity which is to be de-activated
-   *
-   *  This method is normally scheduled by DeActivateDedicatedNistEpsBearer() to run at a specific
-   *  time when a manual bearer de-activation is desired by the simulation user.
-   */
-  void DoDeActivateDedicatedNistEpsBearer (Ptr<NetDevice> ueDevice, Ptr<NetDevice> enbDevice, uint8_t bearerId);
 
 
   /// The downlink LTE channel used in the simulation.
@@ -859,21 +440,6 @@ private:
   Ptr<Object> m_downlinkPathlossModel;
   /// The path loss model used in the uplink channel.
   Ptr<Object> m_uplinkPathlossModel;
-
-  /// Factory of MAC scheduler object.
-  ObjectFactory m_schedulerFactory;
-
-  /// Factory of MAC UE scheduler object.
-  ObjectFactory m_UlschedulerFactory;
-
-  /// Factory of FFR (frequency reuse) algorithm object.
-  ObjectFactory m_ffrAlgorithmFactory;
-  /// Factory of handover algorithm object.
-  ObjectFactory m_handoverAlgorithmFactory;
-  /// Factory of NistLteEnbNetDevice objects.
-  ObjectFactory m_enbNetDeviceFactory;
-  /// Factory of antenna object for eNodeB.
-  ObjectFactory m_enbAntennaModelFactory;
   /// Factory for NistLteUeNetDevice objects.
   ObjectFactory m_ueNetDeviceFactory;
   /// Factory of antenna object for UE.
@@ -898,26 +464,6 @@ private:
   ObjectFactory m_fadingModelFactory;
   /// The fading model used in both the downlink and uplink channels.
   Ptr<SpectrumPropagationLossModel> m_fadingModule;
-  /**
-   * True if a random variable stream number has been assigned for the fading
-   * model. Used to prevent such assignment to be done more than once.
-   */
-  bool m_fadingStreamsAssigned;
-
-  /// Container of PHY layer statistics.
-  Ptr<NistPhyStatsCalculator> m_phyStats;
-  /// Container of PHY layer statistics related to transmission.
-  Ptr<NistPhyTxStatsCalculator> m_phyTxStats;
-  /// Container of PHY layer statistics related to reception.
-  Ptr<NistPhyRxStatsCalculator> m_phyRxStats;
-  /// Container of MAC layer statistics.
-  Ptr<NistMacStatsCalculator> m_macStats;
-  /// Container of RLC layer statistics.
-  Ptr<NistRadioBearerStatsCalculator> m_rlcStats;
-  /// Container of PDCP layer statistics.
-  Ptr<NistRadioBearerStatsCalculator> m_pdcpStats;
-  /// Connects RLC and PDCP statistics containers to appropriate trace sources
-  NistRadioBearerStatsConnector m_radioBearerStatsConnector;
 
   /**
    * Helper which provides implementation of core network. Initially empty
@@ -932,12 +478,6 @@ private:
    * an IMSI of 1. The maximum number of UE is 2^64 (~4.2e9).
    */
   uint64_t m_imsiCounter;
-  /**
-   * Keep track of the number of cell ID allocated. Increases by one every time
-   * a new eNodeB is installed (by InstallSingleEnbDevice()). The first eNodeB
-   * will have a cell ID of 1. The maximum number of eNodeB is 65535.
-   */
-  uint16_t m_cellIdCounter;
 
   /**
    * The `UseIdealRrc` attribute. If true, LteRrcProtocolIdeal will be used for
@@ -981,11 +521,6 @@ private:
    * False per default
    */
   bool m_sameUlDlPropagationCondition;
-
- /** Enables/Disables eNB physical layer upon creation
- *   True per defaul
- */
-  bool m_EnbEnablePhyLayer;
 
 }; // end of `class NistLteHelper`
 

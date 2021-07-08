@@ -33,7 +33,7 @@
 #include <ns3/spectrum-signal-parameters.h>
 #include <ns3/spectrum-interference.h>
 #include <ns3/generic-phy.h>
-#include <ns3/nist-lte-spectrum-phy.h>
+#include <ns3/nr-v2x-spectrum-phy.h>
 
 namespace ns3 {
 
@@ -47,7 +47,7 @@ class NistLteControlMessage;
  * \ingroup lte
  *
  * The NistLtePhy models the physical layer of LTE. It is composed by two
- * NistLteSpectrumPhy, one for the downlink and one for the uplink.
+ * NrV2XSpectrumPhy, one for the downlink and one for the uplink.
  */
 class NistLtePhy : public Object
 {
@@ -60,10 +60,10 @@ public:
 
   /** 
    * 
-   * \param dlPhy the downlink NistLteSpectrumPhy instance
-   * \param ulPhy the uplink NistLteSpectrumPhy instance
+   * \param dlPhy the downlink NrV2XSpectrumPhy instance
+   * \param ulPhy the uplink NrV2XSpectrumPhy instance
    */
-  NistLtePhy (Ptr<NistLteSpectrumPhy> dlPhy, Ptr<NistLteSpectrumPhy> ulPhy);
+  NistLtePhy (Ptr<NrV2XSpectrumPhy> dlPhy, Ptr<NrV2XSpectrumPhy> ulPhy);
 
   virtual ~NistLtePhy ();
 
@@ -82,16 +82,16 @@ public:
 
   /** 
    * 
-   * \return a pointer to the NistLteSpectrumPhy instance that manages the downlink
+   * \return a pointer to the NrV2XSpectrumPhy instance that manages the downlink
    */
-  Ptr<NistLteSpectrumPhy> GetDownlinkSpectrumPhy ();
+  Ptr<NrV2XSpectrumPhy> GetDownlinkSpectrumPhy ();
 
 
   /** 
    * 
-   * \return a pointer to the NistLteSpectrumPhy instance that manages the uplink
+   * \return a pointer to the NrV2XSpectrumPhy instance that manages the uplink
    */
-  Ptr<NistLteSpectrumPhy> GetUplinkSpectrumPhy ();
+  Ptr<NrV2XSpectrumPhy> GetUplinkSpectrumPhy ();
 
   /**
   * \brief Queue the MAC PDU to be sent (according to m_macChTtiDelay)
@@ -216,25 +216,24 @@ protected:
   Ptr<NistLteNetDevice> m_netDevice;
 
   /**
-   * The downlink NistLteSpectrumPhy associated to this NistLtePhy. Also available as
-   * attribute `DlSpectrumPhy` in the child classes NistLteEnbPhy and NistLteUePhy.
+   * The downlink NrV2XSpectrumPhy associated to this NistLtePhy. Also available as
+   * attribute `DlSpectrumPhy` in the child class NrV2XUePhy.
    */
-  Ptr<NistLteSpectrumPhy> m_downlinkSpectrumPhy;
+  Ptr<NrV2XSpectrumPhy> m_downlinkSpectrumPhy;
   /**
-   * The uplink NistLteSpectrumPhy associated to this NistLtePhy. Also available as
-   * attribute `UlSpectrumPhy` in the child classes NistLteEnbPhy and NistLteUePhy.
+   * The uplink NrV2XSpectrumPhy associated to this NistLtePhy. Also available as
+   * attribute `UlSpectrumPhy` in the child class NrV2XUePhy.
    */
-  Ptr<NistLteSpectrumPhy> m_uplinkSpectrumPhy;
+  Ptr<NrV2XSpectrumPhy> m_uplinkSpectrumPhy;
 
   /**
    * Transmission power in dBm. Also available as attribute `TxPower` in the
-   * child classes NistLteEnbPhy and NistLteUePhy.
+   * child class NrV2XUePhy.
    */
   double m_txPower;
   /**
    * Loss (dB) in the Signal-to-Noise-Ratio due to non-idealities in the
-   * receiver. Also available as attribute `NoiseFigure` in the child classes
-   * NistLteEnbPhy and NistLteUePhy.
+   * receiver. Also available as attribute `NoiseFigure` in the child class NrV2XUePhy.
    *
    * According to [Wikipedia](http://en.wikipedia.org/wiki/Noise_figure), this
    * is "the difference in decibels (dB) between the noise output of the actual
@@ -279,14 +278,13 @@ protected:
    * the transmission by the PHY. This is intended to be used to model the
    * latency of real PHY and MAC implementations.
    *
-   * In NistLteEnbPhy, it is 2 TTIs by default and can be configured through the
-   * `MacToChannelDelay` attribute. In NistLteUePhy, it is 4 TTIs.
+   * In NrV2XUePhy, it is 4 TTIs by default and can be configured through the
+   * `MacToChannelDelay` attribute.
    */
   uint8_t m_macChTtiDelay;
 
   /**
-   * Cell identifier. In NistLteEnbPhy, this corresponds to the ID of the cell
-   * which hosts this PHY layer. In NistLteUePhy, this corresponds to the ID of the
+   * Cell identifier. In NrV2XUePhy, this corresponds to the ID of the
    * eNodeB which this PHY layer is synchronized with.
    */
   uint16_t m_cellId;

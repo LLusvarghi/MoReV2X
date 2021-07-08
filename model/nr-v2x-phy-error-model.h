@@ -19,8 +19,8 @@
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NIST_LTE_PHY_ERROR_MODEL_H
-#define NIST_LTE_PHY_ERROR_MODEL_H
+#ifndef NR_V2X_PHY_ERROR_MODEL_H
+#define NR_V2X_PHY_ERROR_MODEL_H
 #include <stdint.h>
 #include <ns3/nist-lte-harq-phy.h>
 #include "ns3/random-variable-stream.h"
@@ -34,6 +34,14 @@ namespace ns3 {
   const uint16_t PSSCH_CDL_SIZE = 46; //!<number of BLER values
   const uint16_t PSCCH_CDL_SIZE = 41; //!<number of BLER values
 
+  const uint16_t Ericsson_PSSCH_CDL_SIZE = 16; //!<number of BLER values
+  const uint16_t Ericsson_PSCCH_CDL_SIZE = 31; //!<number of BLER values
+
+  const uint16_t Huawei_PSSCH_CDL_SIZE = 8; //!<number of BLER values
+
+  const uint16_t Alejandro_TB_SIZE = 26; //!<number of BLER values
+  const uint16_t Alejandro_SCI_SIZE = 28; //!<number of BLER values
+
   /**
    * Structure to report transport block error rate  value and computed SINR
    */
@@ -46,7 +54,7 @@ namespace ns3 {
 /**
   * This class contains functions to access the BLER model
   */
-class NistLtePhyErrorModel
+class NrV2XPhyErrorModel
 {
 
 public:
@@ -81,16 +89,6 @@ public:
     SpatMultplex
   };
 
-  /**
-   * \brief Lookup the BLER for the given SINR
-   * \param fadingChannel The channel to use
-   * \param txmode The Transmission mode used
-   * \param mcs The MCS of the TB
-   * \param sinr The mean sinr of the TB
-   * \param harqHistory The HARQ information
-   */
-  static NistTbErrorStats_t GetPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory);
-
 /**
    * \brief Lookup the BLER for the given SINR
    * \param fadingChannel The channel to use
@@ -98,81 +96,19 @@ public:
    * \param mcs The MCS of the TB
    * \param sinr The mean sinr of the TB
    * \param harqHistory The HARQ information
+   * \param SCS the OFDM subcarrier spacing
+   * \param NPRB number of occupied physical resource blocks
    */
   // V2V
-  static NistTbErrorStats_t GetV2VPsschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance, uint32_t NPRB);
-  static NistTbErrorStats_t GetV2VPscchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, double distance);
+  static NistTbErrorStats_t GetV2VPsschBler (uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, uint16_t SCS, uint32_t NPRB);
+  static NistTbErrorStats_t GetV2VPscchBler (uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory, bool LOS, uint16_t SCS, uint32_t NPRB);
+
+  static NistTbErrorStats_t GetNrV2XPsschBler (uint16_t mcs, double sinr, bool LOS, uint16_t SCS, double RelativeSpeed);
+  static NistTbErrorStats_t GetNrV2XPscchBler (uint16_t mcs, double sinr, bool LOS, uint16_t SCS);
 
 
-  /**
-   * \brief Lookup the BLER for the given SINR
-   * \param fadingChannel The channel to use
-   * \param txmode The Transmission mode used
-   * \param sinr The mean sinr of the TB
-   * \param harqHistory The HARQ information
-   */
-  static NistTbErrorStats_t GetPsdchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr, HarqProcessInfoList_t harqHistory);
-
-  /**
-   * \brief Lookup the BLER for the given SINR
-   * \param fadingChannel The channel to use
-   * \param txmode The Transmission mode used
-   * \param sinr The mean sinr of the TB
-   */
-  static NistTbErrorStats_t GetPscchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr);
-
-  /**
-   * \brief Lookup the BLER for the given SINR
-   * \param fadingChannel The channel to use
-   * \param txmode The Transmission mode used
-   * \param mcs The MCS of the TB
-   * \param sinr The mean sinr of the TB
-   * \param harqHistory The HARQ information
-   */
-  static NistTbErrorStats_t GetPuschBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, uint16_t mcs, double sinr, HarqProcessInfoList_t harqHistory);
-
-  /**
-   * \brief Lookup the BLER for the given SINR
-   * \param fadingChannel The channel to use
-   * \param txmode The Transmission mode used
-   * \param sinr The mean sinr of the TB
-   */
-  static NistTbErrorStats_t GetPsbchBler (NistLteFadingModel fadingChannel, NistLteTxMode txmode, double sinr);
-
- 
-  //TODO: as error models for other physical channels are added, add new functions. The signature should be the same
-
- private:
-  /**
-   * \brief Find the index of the data. Returns -1 if out of range.
-   * \param mcs The MCS of the TB
-   * \param harq The transmission number
-   */
-  static int16_t GetRowIndex (uint16_t mcs, uint8_t harq);
-  
-  /**
-   * \brief Find the index of the column where the BLER is located. Returns -1 if out of range.
-   */
-  static int16_t GetColIndex (double val, double min, double max, double step);
-
-  static double GetBlerValue (const double (*xtable)[XTABLE_SIZE], const double *ytable, const uint16_t ysize, uint16_t mcs, uint8_t harq, double sinr);
-
-  static double GetSinrValue (const double (*xtable)[XTABLE_SIZE], const double *ytable, const uint16_t ysize, uint16_t mcs, uint8_t harq, double bler);
-
-
-  /**
-   * \brief Compute the SINR value given the index on the table
-   */
-  static double GetValueForIndex (uint16_t index, double min, double max, double step);
-
-  static uint16_t GetBlerIndex (double bler, uint16_t row, const double *ytable, const uint16_t ysize);
-  /**
-   * \brief Generic function to compute the effective BLER and SINR
-   */
-  static NistTbErrorStats_t GetBler (const double (*xtable)[XTABLE_SIZE], const double *ytable, const uint16_t ysize, uint16_t mcs, uint8_t harq, double prevSinr, double newSinr);
-  
 
 
 }; //end class
 } // namespace ns3
-#endif /* NIST_LTE_PHY_ERROR_MODEL_H */
+#endif /* NR_V2X_PHY_ERROR_MODEL_H */

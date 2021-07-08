@@ -21,19 +21,16 @@
  * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
-#ifndef NIST_LTE_UE_PHY_H
-#define NIST_LTE_UE_PHY_H
-
+#ifndef NR_V2X_UE_PHY_H
+#define NR_V2X_UE_PHY_H
 
 #include <ns3/nist-lte-phy.h>
 #include <ns3/nist-ff-mac-common.h>
 
 #include <ns3/nist-lte-control-messages.h>
-#include <ns3/nist-lte-amc.h>
 #include <ns3/nist-lte-ue-phy-sap.h>
 #include <ns3/nist-lte-ue-cphy-sap.h>
 #include <ns3/ptr.h>
-#include <ns3/nist-lte-amc.h>
 #include <set>
 #include <ns3/nist-lte-ue-power-control.h>
 
@@ -41,20 +38,19 @@
 namespace ns3 {
 
 class PacketBurst;
-class NistLteEnbPhy;
 class NistLteHarqPhy;
 
 
 /**
  * \ingroup lte
  *
- * The NistLteSpectrumPhy models the physical layer of LTE
+ * The NrV2XSpectrumPhy models the physical layer of LTE
  */
-class NistLteUePhy : public NistLtePhy
+class NrV2XUePhy : public NistLtePhy
 {
 
   friend class NistUeMemberLteUePhySapProvider;
-  friend class NistMemberLteUeCphySapProvider<NistLteUePhy>;
+  friend class NistMemberLteUeCphySapProvider<NrV2XUePhy>;
 
 public:
   /**
@@ -70,16 +66,16 @@ public:
   /**
    * @warning the default constructor should not be used
    */
-  NistLteUePhy ();
+  NrV2XUePhy ();
 
   /**
    *
-   * \param dlPhy the downlink NistLteSpectrumPhy instance
-   * \param ulPhy the uplink NistLteSpectrumPhy instance
+   * \param dlPhy the downlink NrV2XSpectrumPhy instance
+   * \param ulPhy the uplink NrV2XSpectrumPhy instance
    */
-  NistLteUePhy (Ptr<NistLteSpectrumPhy> dlPhy, Ptr<NistLteSpectrumPhy> ulPhy);
+  NrV2XUePhy (Ptr<NrV2XSpectrumPhy> dlPhy, Ptr<NrV2XSpectrumPhy> ulPhy);
 
-  virtual ~NistLteUePhy ();
+  virtual ~NrV2XUePhy ();
 
   // inherited from Object
   static TypeId GetTypeId (void);
@@ -142,25 +138,25 @@ public:
   uint8_t GetMacChDelay (void) const;
 
   /**
-   * \return a pointer to the NistLteSpectrumPhy instance relative to the downlink
+   * \return a pointer to the NrV2XSpectrumPhy instance relative to the downlink
    */
-  Ptr<NistLteSpectrumPhy> GetDlSpectrumPhy () const;
+  Ptr<NrV2XSpectrumPhy> GetDlSpectrumPhy () const;
 
   /**
-   * \return a pointer to the NistLteSpectrumPhy instance relative to the uplink
+   * \return a pointer to the NrV2XSpectrumPhy instance relative to the uplink
    */
-  Ptr<NistLteSpectrumPhy> GetUlSpectrumPhy () const;
+  Ptr<NrV2XSpectrumPhy> GetUlSpectrumPhy () const;
 
   /**
    * set the spectrum phy instance for sidelink reception
    * \param phy the sidelink spectrum phy
    */
-  void SetSlSpectrumPhy (Ptr<NistLteSpectrumPhy> phy);
+  void SetSlSpectrumPhy (Ptr<NrV2XSpectrumPhy> phy);
   
   /**
-   * \return a pointer to the NistLteSpectrumPhy instance relative to the sidelink reception
+   * \return a pointer to the NrV2XSpectrumPhy instance relative to the sidelink reception
    */
-  Ptr<NistLteSpectrumPhy> GetSlSpectrumPhy () const;
+  Ptr<NrV2XSpectrumPhy> GetSlSpectrumPhy () const;
   
   /**
    * \brief Create the PSD for the TX
@@ -208,7 +204,7 @@ public:
   virtual void ReportDataInterference (const SpectrumValue& interf);
   virtual void ReportRsReceivedPower (const SpectrumValue& power);
 
-  // callbacks for NistLteSpectrumPhy
+  // callbacks for NrV2XSpectrumPhy
   virtual void ReceiveNistLteControlMessageList (std::list<Ptr<NistLteControlMessage> >);
   virtual void ReceivePss (uint16_t cellId, Ptr<SpectrumValue> p);
 
@@ -306,27 +302,16 @@ public:
    * \note The S-RSRP is not stored if: it is below the minimum required, or the UE
    *       is not performing the SyncRef selection process
    */
-  virtual void ReceiveSlss (uint16_t slssid, Ptr<SpectrumValue> p); //callback for NistLteSpectrumPhy
+  virtual void ReceiveSlss (uint16_t slssid, Ptr<SpectrumValue> p); //callback for NrV2XSpectrumPhy
   
    // TODO FIXME NEW for V2X
   virtual void MeasurePsschRsrp(Ptr<SpectrumValue> p);
+  void UnimoreReceivedRssi (double rssi, std::vector <int> rbMap, uint16_t ID);
+  /**
+  * Variables needed to store the RSSI measurements in a grid-like fashion
+  */
 
-  struct RSSImeas
-   {
-     uint16_t m_ID;
-     uint16_t m_CSRindex;
-     SidelinkCommResourcePool::SubframeInfo m_timeAxis;
-     double m_rssi;
-   };
-
-  double m_CBRInterval;
-  std::list<RSSImeas> m_RSSIlist; 
-   
-  uint16_t m_NonSingleArrival; 
-  
-  void UnimoreReceivedRssi (double rssi, uint16_t CSRindex, uint16_t ID);
-  void UnimoreEvaluateCBR (uint16_t ID, uint16_t frameNo, uint16_t subframeNo);
-
+  Time m_SL_DATA_DURATION;
 
 private:
 
@@ -407,8 +392,6 @@ private:
   std::vector< std::vector <int> > m_subChannelsForTransmissionQueue;
 
 
-  Ptr<NistLteAmc> m_amc;
-
   /**
    * The `EnableUplinkPowerControl` attribute. If true, Uplink Power Control
    * will be enabled.
@@ -463,7 +446,6 @@ private:
    * Exporting cellId, RNTI, ProSe App Code.
    */
   TracedCallback<uint16_t, uint16_t, uint32_t> m_discoveryAnnouncementTrace;
-
 
   /// \todo Can be removed.
   uint8_t m_subframeNo;
@@ -561,17 +543,17 @@ private:
                                  ///the configured bandwidth 
 
   /**
-   * The sidelink NistLteSpectrumPhy associated to this NistLteUePhy. 
+   * The sidelink NrV2XSpectrumPhy associated to this NrV2XUePhy. 
    */
-  Ptr<NistLteSpectrumPhy> m_sidelinkSpectrumPhy;
+  Ptr<NrV2XSpectrumPhy> m_sidelinkSpectrumPhy;
 
   Ptr<SpectrumValue> m_slNoisePsd; ///< Noise power spectral density for
                                  ///the configured bandwidth 
 
   /**
-   * The V2X sidelink NistLteSpectrumPhy associated to this NistLteUePhy. 
+   * The V2X sidelink NrV2XSpectrumPhy associated to this NrV2XUePhy. 
    */
-  Ptr<NistLteSpectrumPhy> m_V2XSidelinkSpectrumPhy;
+  Ptr<NrV2XSpectrumPhy> m_V2XSidelinkSpectrumPhy;
 
   Ptr<SpectrumValue> m_V2XSlNoisePsd; ///< Noise power spectral density for
                                  ///the configured bandwidth 
@@ -597,12 +579,17 @@ private:
     uint32_t subframeNo;
   };
 
-//TODO FIXME NEW for V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X
 
- /**
- * Variables needed to store the RSSI measurements in a grid-like fashion
- */
+//TODO FIXME NEW for V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X
+ /*Subchannelization scheme*/
+ uint16_t m_nsubCHsize;
+ uint16_t m_BW_RBs;
+ double m_slotDuration;
+ uint16_t m_SCS;
  
+ bool m_IBE;
+
+ uint16_t m_currentMCS;
 
  struct V2XSidelinkGrant
   {
@@ -650,6 +637,24 @@ private:
   };
 
   
+  struct TxPacketInfo
+  {
+    double txTime;
+    uint32_t nodeId;
+    uint64_t packetId;
+    uint32_t Cresel;
+    uint16_t RRI;
+    uint16_t psschRbStart;
+    uint16_t psschRbLen;
+    uint16_t psschRbLenTb;
+    uint16_t pscchRbStart;
+    uint16_t pscchRbLen;
+    SidelinkCommResourcePool::SubframeInfo txFrame;
+  };
+
+  static std::vector<TxPacketInfo> txPackets;
+  static double prevPrintTime;
+
   struct PoolInfo
   {
     Ptr<SidelinkCommResourcePool> m_pool; //the pool
@@ -698,12 +703,28 @@ private:
   std::list<uint32_t> m_discTxApps;
   std::list<uint32_t> m_discRxApps;
 
- //TODO FIXME NEW for V2X 
- /**
+ //TODO FIXME NEW for V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X V2X 
+
+
+  struct RSSImeas
+   {
+     std::vector<uint16_t> m_IDs;
+     double m_rssi;
+   };
+
+  double m_CBRInterval;
+
+  std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> > m_receivedRSSI;
+
+  void UnimoreEvaluateCBR (uint16_t frameNo, uint16_t subframeNo);
+
+  std::string m_outputPath;
+  double m_savingPeriod;
+
+  /**
   * Measurement information for PSSCH-RSRP for Mode 4 3GPP autonomous resource selection algorithm
   */
-
- double m_psschRsrpThresh;
+  double m_psschRsrpThresh;
 
 
   /**
@@ -903,9 +924,9 @@ private:
   // The RRC instructs the PHY to synchronize to a given SyncRef and apply the corresponding change of timing
   void DoSynchronizeToSyncRef (NistLteRrcSap::MasterInformationBlockSL mibSl);
 
-}; // end of `class NistLteUePhy`
+}; // end of `class NrV2XUePhy`
 
 
 }
 
-#endif /* NIST_LTE_UE_PHY_H */
+#endif /* NR_V2X_UE_PHY_H */

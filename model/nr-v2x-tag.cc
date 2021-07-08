@@ -30,35 +30,35 @@
 #include <iostream>
 namespace ns3 {
 
-NS_OBJECT_ENSURE_REGISTERED (NrV2xTag);
+NS_OBJECT_ENSURE_REGISTERED (NrV2XTag);
 
 TypeId 
-NrV2xTag::GetTypeId (void)
+NrV2XTag::GetTypeId (void)
 {
-  static TypeId tid = TypeId ("ns3::NrV2xTag")
+  static TypeId tid = TypeId ("ns3::NrV2XTag")
     .SetParent<Tag> ()
-    .AddConstructor<NrV2xTag> ()
+    .AddConstructor<NrV2XTag> ()
     .AddAttribute ("SimpleValue",
                    "A simple value",
                    EmptyAttributeValue (),
-                   MakeUintegerAccessor (&NrV2xTag::GetSimpleValue),
+                   MakeUintegerAccessor (&NrV2XTag::GetSimpleValue),
                    MakeUintegerChecker<uint8_t> ())
   ;
   return tid;
 }
 TypeId 
-NrV2xTag::GetInstanceTypeId (void) const
+NrV2XTag::GetInstanceTypeId (void) const
 {
   return GetTypeId ();
 }
 uint32_t 
-NrV2xTag::GetSerializedSize (void) const
+NrV2XTag::GetSerializedSize (void) const
 {
    return sizeof m_doubleValue + sizeof m_intValue + sizeof m_simpleValue + sizeof m_genTime + sizeof m_packetId + sizeof m_genPosX + sizeof m_genPosY + sizeof m_nodeId + sizeof m_numHops + sizeof m_messageType + sizeof m_trafficType + sizeof m_Cresel + sizeof m_PacketSize + sizeof m_ReservationSize + sizeof m_pppp + sizeof m_pdb + sizeof m_p_rsvp + sizeof m_mcs;
 }
 
 void 
-NrV2xTag::Serialize (TagBuffer i) const
+NrV2XTag::Serialize (TagBuffer i) const
 {
   i.WriteU8 (m_simpleValue);
   i.WriteU64 (m_intValue);
@@ -78,13 +78,13 @@ NrV2xTag::Serialize (TagBuffer i) const
   i.WriteU16 (m_ReservationSize);
 
   i.WriteU8 (m_pppp);
-  i.WriteU32 (m_pdb);
+  i.WriteDouble (m_pdb);
   i.WriteU32 (m_p_rsvp);
   i.WriteU32 (m_mcs);
 
 }
 void 
-NrV2xTag::Deserialize (TagBuffer i)
+NrV2XTag::Deserialize (TagBuffer i)
 {
   m_simpleValue = i.ReadU8 ();
   m_intValue = i.ReadU64 ();
@@ -102,14 +102,14 @@ NrV2xTag::Deserialize (TagBuffer i)
   m_PacketSize = i.ReadU16();
   m_ReservationSize = i.ReadU16();
   m_pppp = i.ReadU8();
-  m_pdb = i.ReadU32 ();
+  m_pdb = i.ReadDouble();
   m_p_rsvp = i.ReadU32 ();
   m_mcs = i.ReadU32 ();
   
   
 }
 void 
-NrV2xTag::Print (std::ostream &os) const
+NrV2XTag::Print (std::ostream &os) const
 {
   os << "int64 = " << (uint64_t)m_intValue << "\nint8 = " << (uint8_t)m_simpleValue;
 
@@ -120,219 +120,219 @@ NrV2xTag::Print (std::ostream &os) const
 }
 
 void
-NrV2xTag::SetSimpleValue (uint8_t value)
+NrV2XTag::SetSimpleValue (uint8_t value)
 {
   m_simpleValue = value;
 }
 
 
 void
-NrV2xTag::SetIntValue (uint64_t value)
+NrV2XTag::SetIntValue (uint64_t value)
 {
   m_intValue = value;
 }
 
 void
-NrV2xTag::SetDoubleValue (double value)
+NrV2XTag::SetDoubleValue (double value)
 {
   m_doubleValue = value;
 }
 
 void
-NrV2xTag::SetGenTime (double value)
+NrV2XTag::SetGenTime (double value)
 {
   m_genTime = value;
 }
 
 void
-NrV2xTag::SetGenPosX (double value)
+NrV2XTag::SetGenPosX (double value)
 {
   m_genPosX = value;
 }
 
 void
-NrV2xTag::SetGenPosY (double value)
+NrV2XTag::SetGenPosY (double value)
 {
   m_genPosY = value;
 }
 
 void
-NrV2xTag::SetPacketId (uint64_t value)
+NrV2XTag::SetPacketId (uint64_t value)
 {
   m_packetId = value;
 }
 
 void
-NrV2xTag::SetNodeId (uint32_t value)
+NrV2XTag::SetNodeId (uint32_t value)
 {
   m_nodeId = value;
 }
 
 void
-NrV2xTag::SetNumHops (uint32_t value)
+NrV2XTag::SetNumHops (uint32_t value)
 {
   m_numHops = value;
 }
 
 void
-NrV2xTag::SetMessageType (uint8_t value)
+NrV2XTag::SetMessageType (uint8_t value)
 {
   m_messageType = value;
 }
 
 void
-NrV2xTag::SetTrafficType (uint8_t value)
+NrV2XTag::SetTrafficType (uint8_t value)
 {
   m_trafficType = value;
 }
 
 void
-NrV2xTag::SetReselectionCounter (uint16_t value)
+NrV2XTag::SetReselectionCounter (uint16_t value)
 {
   m_Cresel = value;
 }
 
 void
-NrV2xTag::SetPacketSize (uint16_t value)
+NrV2XTag::SetPacketSize (uint16_t value)
 {
   m_PacketSize = value;
 }
 
 void
-NrV2xTag::SetReservationSize (uint16_t value)
+NrV2XTag::SetReservationSize (uint16_t value)
 {
   m_ReservationSize = value;
 }
 
 void
-NrV2xTag::SetPPPP (uint8_t value)
+NrV2XTag::SetPPPP (uint8_t value)
 {
   m_pppp = value;
 }
 
 void
-NrV2xTag::SetPdb (uint32_t value)
+NrV2XTag::SetPdb (double value)
 {
   m_pdb = value;
 }
 
 void
-NrV2xTag::SetPrsvp (uint32_t value)
+NrV2XTag::SetPrsvp (uint32_t value)
 {
   m_p_rsvp = value;
 }
 
 void
-NrV2xTag::SetMcs (uint32_t value)
+NrV2XTag::SetMcs (uint32_t value)
 {
   m_mcs = value;
 }
 
 //Getters
 uint8_t 
-NrV2xTag::GetSimpleValue (void) const
+NrV2XTag::GetSimpleValue (void) const
 {
   return m_simpleValue;
 }
 
 uint64_t 
-NrV2xTag::GetIntValue (void) const
+NrV2XTag::GetIntValue (void) const
 {
   return m_intValue;
 }
 
 double
-NrV2xTag::GetDoubleValue (void) const
+NrV2XTag::GetDoubleValue (void) const
 {
   return m_doubleValue;
 }
 
 double
-NrV2xTag::GetGenTime (void) const
+NrV2XTag::GetGenTime (void) const
 {
   return m_genTime;
 }
 
 double
-NrV2xTag::GetGenPosX (void) const
+NrV2XTag::GetGenPosX (void) const
 {
   return m_genPosX;
 }
 
 double
-NrV2xTag::GetGenPosY (void) const
+NrV2XTag::GetGenPosY (void) const
 {
   return m_genPosY;
 }
 
 uint64_t
-NrV2xTag::GetPacketId (void) const
+NrV2XTag::GetPacketId (void) const
 {
   return m_packetId;
 }
 
 uint32_t
-NrV2xTag::GetNodeId (void) const
+NrV2XTag::GetNodeId (void) const
 {
   return m_nodeId;
 }
 
 uint32_t
-NrV2xTag::GetNumHops (void) const
+NrV2XTag::GetNumHops (void) const
 {
   return m_numHops;
 }
 
 uint8_t 
-NrV2xTag::GetMessageType (void) const
+NrV2XTag::GetMessageType (void) const
 {
   return m_messageType;
 }
 
 uint8_t 
-NrV2xTag::GetTrafficType (void) const
+NrV2XTag::GetTrafficType (void) const
 {
   return m_trafficType;
 }
 
 uint16_t 
-NrV2xTag::GetReselectionCounter (void) const
+NrV2XTag::GetReselectionCounter (void) const
 {
   return m_Cresel;
 }
 
 uint16_t 
-NrV2xTag::GetPacketSize (void) const
+NrV2XTag::GetPacketSize (void) const
 {
   return m_PacketSize;
 }
 
 uint16_t
-NrV2xTag::GetReservationSize (void) const
+NrV2XTag::GetReservationSize (void) const
 {
   return m_ReservationSize;
 }
 
 uint8_t 
-NrV2xTag::GetPPPP (void) const
+NrV2XTag::GetPPPP (void) const
 {
   return m_pppp;
 }
 
-uint32_t 
-NrV2xTag::GetPdb (void) const
+double 
+NrV2XTag::GetPdb (void) const
 {
   return m_pdb;
 }
 
 uint32_t 
-NrV2xTag::GetPrsvp (void) const
+NrV2XTag::GetPrsvp (void) const
 {
   return m_p_rsvp;
 }
 
 uint32_t 
-NrV2xTag::GetMcs (void) const
+NrV2XTag::GetMcs (void) const
 {
   return m_mcs;
 }

@@ -32,7 +32,6 @@
 namespace ns3 {
 
 
-class NistLteEnbNetDevice;
 
 /**
  * Service Access Point (SAP) offered by the UE PHY to the UE RRC for control purposes

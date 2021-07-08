@@ -19,6 +19,7 @@
  *         Nicola Baldo <nbaldo@cttc.es>
  *         Manuel Requena <manuel.requena@cttc.es>
  * Modified by: NIST
+ * Modified by: Luca Lusvarghi <luca.lusvarghi5@unimore.it>
  */
 
 #ifndef NIST_POINT_TO_POINT_EPC_HELPER_H
@@ -38,7 +39,6 @@ class Node;
 class NetDevice;
 class VirtualNetDevice;
 class NistEpcSgwPgwApplication;
-class NistEpcX2;
 class NistEpcMme;
 
 /**
@@ -73,9 +73,7 @@ public:
   virtual void DoDispose ();
 
   // inherited from NistEpcHelper
-  virtual void AddEnb (Ptr<Node> enbNode, Ptr<NetDevice> lteEnbNetDevice, uint16_t cellId);
   virtual void AddUe (Ptr<NetDevice> ueLteDevice, uint64_t imsi);
-  virtual void AddX2Interface (Ptr<Node> enbNode1, Ptr<Node> enbNode2);
   virtual uint8_t ActivateNistEpsBearer (Ptr<NetDevice> ueLteDevice, uint64_t imsi, Ptr<NistEpcTft> tft, NistEpsBearer bearer);
   //communication
   virtual void ActivateSidelinkBearer (Ptr<NetDevice> ueDevice, Ptr<NistSlTft> tft);
@@ -150,25 +148,11 @@ private:
    */
   uint16_t m_gtpuUdpPort;
 
-  /**
-   * Map storing for each IMSI the corresponding eNB NetDevice
-   */
-  std::map<uint64_t, Ptr<NetDevice> > m_imsiEnbDeviceMap;
   
   /** 
    * helper to assign addresses to X2 NetDevices 
    */
   Ipv4AddressHelper m_x2Ipv4AddressHelper;   
-
-  /**
-   * The data rate to be used for the next X2 link to be created
-   */
-  DataRate m_x2LinkDataRate;
-
-  /**
-   * The delay to be used for the next X2 link to be created
-   */
-  Time     m_x2LinkDelay;
 
   /**
    * The MTU of the next X2 link to be created. Note that,

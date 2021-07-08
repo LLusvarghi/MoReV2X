@@ -17,6 +17,7 @@
  *
  * Author: Giuseppe Piro  <g.piro@poliba.it>
  * Modified by: NIST
+ * Modified by: <luca.lusvarghi5@unimore.it>
  */
 
 #ifndef NIST_LTE_SPECTRUM_VALUE_HELPER_H
@@ -37,6 +38,7 @@ namespace ns3 {
 class NistLteSpectrumValueHelper
 {
 public:
+
   /**
    * Calculates the carrier frequency from the E-UTRA Absolute
    * Radio Frequency Channel Number (EARFCN) according to 3GPP TS
@@ -125,9 +127,13 @@ public:
    * \return a pointer to a newly allocated SpectrumValue representing the TX Power Spectral Density in W/Hz for each Resource Block
    */
   static Ptr<SpectrumValue> CreateUlTxPowerSpectralDensity (uint16_t earfcn,
-                                                          uint8_t bandwidth,
+                                                          uint16_t bandwidth,
                                                           double powerTx,
-                                                          std::vector <int> activeRbs);
+                                                          std::vector <int> activeRbs, 
+                                                          double slotDuration,
+                                                          uint16_t SCS,
+                                                          uint16_t mcsIndex,
+                                                          bool IBE);
   /**
    * create a spectrum value representing the power spectral
    * density of a signal to be transmitted. See 3GPP TS 36.101 for
@@ -172,6 +178,7 @@ public:
    * \return a pointer to a newly allocated SpectrumValue representing the noise Power Spectral Density in W/Hz for each Resource Block
    */
   static Ptr<SpectrumValue> CreateNoisePowerSpectralDensity (double noiseFigure, Ptr<SpectrumModel> spectrumModel);
+
 
 };
 

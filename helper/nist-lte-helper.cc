@@ -26,43 +26,26 @@
 #include <ns3/log.h>
 #include <ns3/abort.h>
 #include <ns3/pointer.h>
-#include <ns3/nist-lte-enb-rrc.h>
 #include <ns3/nist-epc-ue-nas.h>
-#include <ns3/nist-epc-enb-application.h>
 #include <ns3/nist-lte-ue-rrc.h>
-#include <ns3/nist-lte-ue-mac.h>
-#include <ns3/nist-lte-enb-mac.h>
-#include <ns3/nist-lte-enb-net-device.h>
-#include <ns3/nist-lte-enb-phy.h>
-#include <ns3/nist-lte-ue-phy.h>
-#include <ns3/nist-lte-spectrum-phy.h>
+#include <ns3/nr-v2x-ue-mac.h>
+#include <ns3/nr-v2x-ue-phy.h>
+#include <ns3/nr-v2x-spectrum-phy.h>
 #include <ns3/nist-lte-chunk-processor.h>
 #include <ns3/nist-lte-sl-chunk-processor.h>
 #include <ns3/multi-model-spectrum-channel.h>
 #include <ns3/friis-spectrum-propagation-loss.h>
-#include <ns3/nist-trace-fading-loss-model.h>
 #include <ns3/isotropic-antenna-model.h>
-#include <ns3/nist-lte-enb-net-device.h>
-#include <ns3/nist-lte-ue-net-device.h>
-#include <ns3/nist-ff-mac-scheduler.h>
-#include <ns3/nist-lte-ffr-algorithm.h>
-#include <ns3/nist-lte-handover-algorithm.h>
-#include <ns3/nist-lte-anr.h>
+#include <ns3/nr-v2x-ue-net-device.h>
 #include <ns3/nist-lte-rlc.h>
-#include <ns3/nist-lte-rlc-um.h>
+#include <ns3/nr-v2x-rlc-um.h>
 #include <ns3/nist-lte-rlc-am.h>
-#include <ns3/nist-epc-enb-s1-sap.h>
 #include <ns3/nist-lte-rrc-protocol-ideal.h>
-#include <ns3/nist-lte-rrc-protocol-real.h>
-#include <ns3/nist-mac-stats-calculator.h>
-#include <ns3/nist-phy-stats-calculator.h>
-#include <ns3/nist-phy-tx-stats-calculator.h>
-#include <ns3/nist-phy-rx-stats-calculator.h>
 #include <ns3/nist-epc-helper.h>
 #include <iostream>
+#include <fstream>
 #include <ns3/buildings-propagation-loss-model.h>
 #include <ns3/nist-lte-spectrum-value-helper.h>
-#include <ns3/nist-epc-x2.h>
 #include <cfloat>
 
 namespace ns3 {
@@ -72,14 +55,9 @@ NS_LOG_COMPONENT_DEFINE ("NistLteHelper");
 NS_OBJECT_ENSURE_REGISTERED (NistLteHelper);
 
 NistLteHelper::NistLteHelper (void)
-  : m_fadingStreamsAssigned (false),
-    m_imsiCounter (0),
-    m_cellIdCounter (0),
-    m_EnbEnablePhyLayer (true)
+  : m_imsiCounter (0)
 {
   NS_LOG_FUNCTION (this);
-  m_enbNetDeviceFactory.SetTypeId (NistLteEnbNetDevice::GetTypeId ());
-  m_enbAntennaModelFactory.SetTypeId (IsotropicAntennaModel::GetTypeId ());
   m_ueNetDeviceFactory.SetTypeId (NistLteUeNetDevice::GetTypeId ());
   m_ueAntennaModelFactory.SetTypeId (IsotropicAntennaModel::GetTypeId ());
   m_channelFactory.SetTypeId (MultiModelSpectrumChannel::GetTypeId ());
@@ -138,10 +116,6 @@ NistLteHelper::DoInitialize (void)
       m_downlinkChannel->AddSpectrumPropagationLossModel (m_fadingModule);
       m_uplinkChannel->AddSpectrumPropagationLossModel (m_fadingModule);
     }
-  m_phyStats = CreateObject<NistPhyStatsCalculator> ();
-  m_phyTxStats = CreateObject<NistPhyTxStatsCalculator> ();
-  m_phyRxStats = CreateObject<NistPhyRxStatsCalculator> ();
-  m_macStats = CreateObject<NistMacStatsCalculator> ();
   Object::DoInitialize ();
 
 }
@@ -158,38 +132,6 @@ TypeId NistLteHelper::GetTypeId (void)
     TypeId ("ns3::NistLteHelper")
     .SetParent<Object> ()
     .AddConstructor<NistLteHelper> ()
-    .AddAttribute ("Scheduler",
-                   "The type of scheduler to be used for eNBs. "
-                   "The allowed values for this attributes are the type names "
-                   "of any class inheriting from ns3::NistFfMacScheduler.",
-                   StringValue ("ns3::NistRrFfMacScheduler"),
-                   MakeStringAccessor (&NistLteHelper::SetSchedulerType,
-                                       &NistLteHelper::GetSchedulerType),
-                   MakeStringChecker ())
-    .AddAttribute ("UlScheduler",    
-                   "The type of UL scheduler to be used for UEs. "
-                   "The allowed values for this attributes are the type names "
-                   "of any class inheriting from ns3::NistFfMacScheduler.",
-                   StringValue ("ns3::NistRrFfMacScheduler"),
-                   MakeStringAccessor (&NistLteHelper::SetUlSchedulerType,
-                                       &NistLteHelper::GetUlSchedulerType),
-                   MakeStringChecker ())
-    .AddAttribute ("FfrAlgorithm",
-                   "The type of FFR algorithm to be used for eNBs. "
-                   "The allowed values for this attributes are the type names "
-                   "of any class inheriting from ns3::NistLteFfrAlgorithm.",
-                   StringValue ("ns3::NistLteFrNoOpAlgorithm"),
-                   MakeStringAccessor (&NistLteHelper::SetFfrAlgorithmType,
-                                       &NistLteHelper::GetFfrAlgorithmType),
-                   MakeStringChecker ())
-    .AddAttribute ("HandoverAlgorithm",
-                   "The type of handover algorithm to be used for eNBs. "
-                   "The allowed values for this attributes are the type names "
-                   "of any class inheriting from ns3::NistLteHandoverAlgorithm.",
-                   StringValue ("ns3::NistNoOpHandoverAlgorithm"),
-                   MakeStringAccessor (&NistLteHelper::SetHandoverAlgorithmType,
-                                       &NistLteHelper::GetHandoverAlgorithmType),
-                   MakeStringChecker ())
     .AddAttribute ("PathlossModel",
                    "The type of pathloss model to be used. "
                    "The allowed values for this attributes are the type names "
@@ -240,12 +182,6 @@ TypeId NistLteHelper::GetTypeId (void)
                    BooleanValue (false), 
                    MakeBooleanAccessor (&NistLteHelper::m_useDiscovery),
                    MakeBooleanChecker ())
-    .AddAttribute ("EnbEnablePhyLayer",
-                   "If true, normal eNB operation (default). "
-                   "If false, eNB physical layer disable.",
-                   BooleanValue (true), 
-                   MakeBooleanAccessor (&NistLteHelper::m_EnbEnablePhyLayer),
-                   MakeBooleanChecker ())
     .AddAttribute ("UseSameUlDlPropagationCondition",
                    "If true, same conditions for both UL and DL"
                    "If false, different instances of the pathloss model",
@@ -265,126 +201,12 @@ NistLteHelper::DoDispose ()
   Object::DoDispose ();
 }
 
-void
-NistLteHelper::EnableNewEnbPhy ()
-{
-  NS_LOG_FUNCTION (this);
-  m_EnbEnablePhyLayer = true;
-}
-
-void
-NistLteHelper::DisableNewEnbPhy ()
-{
-  NS_LOG_FUNCTION (this);
-  m_EnbEnablePhyLayer = false;
-}
 
 void 
 NistLteHelper::SetEpcHelper (Ptr<NistEpcHelper> h)
 {
   NS_LOG_FUNCTION (this << h);
   m_epcHelper = h;
-}
-
-void 
-NistLteHelper::SetSchedulerType (std::string type) 
-{
-  NS_LOG_FUNCTION (this << type);
-
-  if ( (type =="ns3::NistPriorityFfMacScheduler") || ( type == "ns3::NistPfFfMacScheduler") || ( type == "ns3::NistMtFfMacScheduler" )  || ( type == "ns3::NistRrSlFfMacScheduler") || (type == "ns3::Nist3GPPcalMacScheduler")) 
-    {
-       //this DL scheduler has a correspandant UL scheduler 
-       SetUlSchedulerType (type);   
-    }
-  else if ( (type =="ns3::NistFdMtFfMacScheduler") || (type == "ns3::NistTdMtFfMacScheduler") || (type == "ns3::NistFdBetFfMacScheduler")  || (type == "ns3::NistTdBetFfMacScheduler")  || (type == "ns3::NistTtaFfMacScheduler") || (type  == "ns3::NistTdTbfqFfMacScheduler")  || (type == "ns3::NistFdTbfqFfMacScheduler")   || (type == "ns3::NistPssFfMacScheduler")  || (type == "ns3::NistRrFfMacScheduler")) 
-   {
-      // these DL schedulers don't have a corresponding UE scheduler 
-      SetUlSchedulerType ("ns3::NistRrFfMacScheduler");
-   }
-
-  else
-   {
-      NS_FATAL_ERROR ("unknown Scheduler type " << type);
-    }
-
-  m_schedulerFactory = ObjectFactory ();
-  m_schedulerFactory.SetTypeId (type);
-}
-
-void 
-NistLteHelper::SetUlSchedulerType (std::string type) 
-{
-  NS_LOG_FUNCTION (this << type);
-  if ( (type == "ns3::NistRrFfMacScheduler") || (type == "ns3::NistPriorityFfMacScheduler") || (type == "ns3::NistPfFfMacScheduler") || (type == "ns3::NistMtFfMacScheduler") || ( type == "ns3::NistRrSlFfMacScheduler") || (type == "ns3::Nist3GPPcalMacScheduler"))
-   {
-     m_UlschedulerFactory = ObjectFactory ();
-     m_UlschedulerFactory.SetTypeId (type);
-   }
-  else
-     NS_FATAL_ERROR ("unknown UE Scheduler type " << type << " ; The only schedulers implemented are : RR, MT, PF, Priority schedulers, FDM: All in from 3GPPcal.");
-}
-
-std::string
-NistLteHelper::GetSchedulerType () const
-{
-  return m_schedulerFactory.GetTypeId ().GetName ();
-} 
-
-std::string
-NistLteHelper::GetUlSchedulerType () const
-{
-  return m_UlschedulerFactory.GetTypeId ().GetName ();
-} 
-
-
-
-void 
-NistLteHelper::SetSchedulerAttribute (std::string n, const AttributeValue &v)
-{
-  NS_LOG_FUNCTION (this << n);
-  m_schedulerFactory.Set (n, v);
-}
-
-std::string
-NistLteHelper::GetFfrAlgorithmType () const
-{
-  return m_ffrAlgorithmFactory.GetTypeId ().GetName ();
-}
-
-void
-NistLteHelper::SetFfrAlgorithmType (std::string type)
-{
-  NS_LOG_FUNCTION (this << type);
-  m_ffrAlgorithmFactory = ObjectFactory ();
-  m_ffrAlgorithmFactory.SetTypeId (type);
-}
-
-void
-NistLteHelper::SetFfrAlgorithmAttribute (std::string n, const AttributeValue &v)
-{
-  NS_LOG_FUNCTION (this << n);
-  m_ffrAlgorithmFactory.Set (n, v);
-}
-
-std::string
-NistLteHelper::GetHandoverAlgorithmType () const
-{
-  return m_handoverAlgorithmFactory.GetTypeId ().GetName ();
-}
-
-void
-NistLteHelper::SetHandoverAlgorithmType (std::string type)
-{
-  NS_LOG_FUNCTION (this << type);
-  m_handoverAlgorithmFactory = ObjectFactory ();
-  m_handoverAlgorithmFactory.SetTypeId (type);
-}
-
-void
-NistLteHelper::SetHandoverAlgorithmAttribute (std::string n, const AttributeValue &v)
-{
-  NS_LOG_FUNCTION (this << n);
-  m_handoverAlgorithmFactory.Set (n, v);
 }
 
 
@@ -415,27 +237,6 @@ NistLteHelper::SetPathlossModelAttribute (std::string n, const AttributeValue &v
   m_ulPathlossModelFactory.Set (n, v);
 }
 
-void
-NistLteHelper::SetEnbDeviceAttribute (std::string n, const AttributeValue &v)
-{
-  NS_LOG_FUNCTION (this);
-  m_enbNetDeviceFactory.Set (n, v);
-}
-
-
-void 
-NistLteHelper::SetEnbAntennaModelType (std::string type)
-{
-  NS_LOG_FUNCTION (this);
-  m_enbAntennaModelFactory.SetTypeId (type);
-}
-
-void 
-NistLteHelper::SetEnbAntennaModelAttribute (std::string n, const AttributeValue &v)
-{
-  NS_LOG_FUNCTION (this);
-  m_enbAntennaModelFactory.Set (n, v);
-}
 
 void
 NistLteHelper::SetUeDeviceAttribute (std::string n, const AttributeValue &v)
@@ -491,21 +292,6 @@ NistLteHelper::SetSpectrumChannelAttribute (std::string n, const AttributeValue 
 
 
 NetDeviceContainer
-NistLteHelper::InstallEnbDevice (NodeContainer c)
-{
-  NS_LOG_FUNCTION (this);
-  Initialize ();  // will run DoInitialize () if necessary
-  NetDeviceContainer devices;
-  for (NodeContainer::Iterator i = c.Begin (); i != c.End (); ++i)
-    {
-      Ptr<Node> node = *i;
-      Ptr<NetDevice> device = InstallSingleEnbDevice (node);
-      devices.Add (device);
-    }
-  return devices;
-}
-
-NetDeviceContainer
 NistLteHelper::InstallUeDevice (NodeContainer c)
 {
   NS_LOG_FUNCTION (this);
@@ -521,190 +307,18 @@ NistLteHelper::InstallUeDevice (NodeContainer c)
 
 
 Ptr<NetDevice>
-NistLteHelper::InstallSingleEnbDevice (Ptr<Node> n)
-{
-
-  NS_ABORT_MSG_IF (m_cellIdCounter == 65535, "max num eNBs exceeded");
-  uint16_t cellId = ++m_cellIdCounter;
-
-  Ptr<NistLteSpectrumPhy> dlPhy = CreateObject<NistLteSpectrumPhy> ();
-  Ptr<NistLteSpectrumPhy> ulPhy = CreateObject<NistLteSpectrumPhy> ();
-  
-  Ptr<NistLteEnbPhy> phy = CreateObject<NistLteEnbPhy> (dlPhy, ulPhy, m_EnbEnablePhyLayer);
-  
-  Ptr<NistLteHarqPhy> harq = Create<NistLteHarqPhy> ();
-  dlPhy->SetHarqPhyModule (harq);
-  ulPhy->SetHarqPhyModule (harq);
-  phy->SetHarqPhyModule (harq);
-
-  Ptr<NistLteChunkProcessor> pCtrl = Create<NistLteChunkProcessor> ();
-  pCtrl->AddCallback (MakeCallback (&NistLteEnbPhy::GenerateCtrlCqiReport, phy));
-  ulPhy->AddCtrlSinrChunkProcessor (pCtrl); // for evaluating SRS UL-CQI
-
-  Ptr<NistLteChunkProcessor> pData = Create<NistLteChunkProcessor> ();
-  pData->AddCallback (MakeCallback (&NistLteEnbPhy::GenerateDataCqiReport, phy));
-  pData->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSinrPerceived, ulPhy));
-  ulPhy->AddDataSinrChunkProcessor (pData); // for evaluating PUSCH UL-CQI
-
-  Ptr<NistLteChunkProcessor> pInterf = Create<NistLteChunkProcessor> ();
-  pInterf->AddCallback (MakeCallback (&NistLteEnbPhy::ReportInterference, phy));
-  ulPhy->AddInterferenceDataChunkProcessor (pInterf); // for interference power tracing
-
-  dlPhy->SetChannel (m_downlinkChannel);
-  ulPhy->SetChannel (m_uplinkChannel);
-
-  Ptr<MobilityModel> mm = n->GetObject<MobilityModel> ();
-  NS_ASSERT_MSG (mm, "MobilityModel needs to be set on node before calling NistLteHelper::InstallUeDevice ()");
-  dlPhy->SetMobility (mm);
-  ulPhy->SetMobility (mm);
-
-  Ptr<AntennaModel> antenna = (m_enbAntennaModelFactory.Create ())->GetObject<AntennaModel> ();
-  NS_ASSERT_MSG (antenna, "error in creating the AntennaModel object");
-  dlPhy->SetAntenna (antenna);
-  ulPhy->SetAntenna (antenna);
-
-  Ptr<NistLteEnbMac> mac = CreateObject<NistLteEnbMac> ();
-  Ptr<NistFfMacScheduler> sched = m_schedulerFactory.Create<NistFfMacScheduler> ();
-  Ptr<NistLteFfrAlgorithm> ffrAlgorithm = m_ffrAlgorithmFactory.Create<NistLteFfrAlgorithm> ();
-  Ptr<NistLteHandoverAlgorithm> handoverAlgorithm = m_handoverAlgorithmFactory.Create<NistLteHandoverAlgorithm> ();
-  Ptr<NistLteEnbRrc> rrc = CreateObject<NistLteEnbRrc> ();
-
-  if (m_useIdealRrc)
-    {
-      Ptr<NistLteEnbRrcProtocolIdeal> rrcProtocol = CreateObject<NistLteEnbRrcProtocolIdeal> ();
-      rrcProtocol->SetNistLteEnbRrcSapProvider (rrc->GetNistLteEnbRrcSapProvider ());
-      rrc->SetNistLteEnbRrcSapUser (rrcProtocol->GetNistLteEnbRrcSapUser ());
-      rrc->AggregateObject (rrcProtocol);
-      rrcProtocol->SetCellId (cellId);
-    }
-  else
-    {
-      Ptr<NistLteEnbRrcProtocolReal> rrcProtocol = CreateObject<NistLteEnbRrcProtocolReal> ();
-      rrcProtocol->SetNistLteEnbRrcSapProvider (rrc->GetNistLteEnbRrcSapProvider ());
-      rrc->SetNistLteEnbRrcSapUser (rrcProtocol->GetNistLteEnbRrcSapUser ());
-      rrc->AggregateObject (rrcProtocol);
-      rrcProtocol->SetCellId (cellId);
-    }
-
-  if (m_epcHelper != 0)
-    {
-      EnumValue epsBearerToRlcMapping;
-      rrc->GetAttribute ("NistEpsBearerToRlcMapping", epsBearerToRlcMapping);
-      // it does not make sense to use RLC/SM when also using the EPC
-      if (epsBearerToRlcMapping.Get () == NistLteEnbRrc::RLC_SM_ALWAYS)
-        {
-          rrc->SetAttribute ("NistEpsBearerToRlcMapping", EnumValue (NistLteEnbRrc::RLC_UM_ALWAYS));
-        }
-    }
-
-  rrc->SetNistLteEnbCmacSapProvider (mac->GetNistLteEnbCmacSapProvider ());
-  mac->SetNistLteEnbCmacSapUser (rrc->GetNistLteEnbCmacSapUser ());
-  rrc->SetNistLteMacSapProvider (mac->GetNistLteMacSapProvider ());
-
-  rrc->SetNistLteHandoverManagementSapProvider (handoverAlgorithm->GetNistLteHandoverManagementSapProvider ());
-  handoverAlgorithm->SetNistLteHandoverManagementSapUser (rrc->GetNistLteHandoverManagementSapUser ());
-
-  mac->SetNistFfMacSchedSapProvider (sched->GetNistFfMacSchedSapProvider ());
-  mac->SetNistFfMacCschedSapProvider (sched->GetNistFfMacCschedSapProvider ());
-
-  sched->SetNistFfMacSchedSapUser (mac->GetNistFfMacSchedSapUser ());
-  sched->SetNistFfMacCschedSapUser (mac->GetNistFfMacCschedSapUser ());
-
-  phy->SetNistLteEnbPhySapUser (mac->GetNistLteEnbPhySapUser ());
-  mac->SetNistLteEnbPhySapProvider (phy->GetNistLteEnbPhySapProvider ());
-
-  phy->SetNistLteEnbCphySapUser (rrc->GetNistLteEnbCphySapUser ());
-  rrc->SetNistLteEnbCphySapProvider (phy->GetNistLteEnbCphySapProvider ());
-
-  //FFR SAP
-  sched->SetNistLteFfrSapProvider (ffrAlgorithm->GetNistLteFfrSapProvider ());
-  ffrAlgorithm->SetNistLteFfrSapUser (sched->GetNistLteFfrSapUser ());
-
-  rrc->SetNistLteFfrRrcSapProvider (ffrAlgorithm->GetNistLteFfrRrcSapProvider ());
-  ffrAlgorithm->SetNistLteFfrRrcSapUser (rrc->GetNistLteFfrRrcSapUser ());
-  //FFR SAP END
-
-  Ptr<NistLteEnbNetDevice> dev = m_enbNetDeviceFactory.Create<NistLteEnbNetDevice> ();
-  dev->SetNode (n);
-  dev->SetAttribute ("CellId", UintegerValue (cellId)); 
-  dev->SetAttribute ("NistLteEnbPhy", PointerValue (phy));
-  dev->SetAttribute ("NistLteEnbMac", PointerValue (mac));
-  dev->SetAttribute ("NistFfMacScheduler", PointerValue (sched));
-  dev->SetAttribute ("NistLteEnbRrc", PointerValue (rrc)); 
-  dev->SetAttribute ("NistLteHandoverAlgorithm", PointerValue (handoverAlgorithm));
-  dev->SetAttribute ("NistLteFfrAlgorithm", PointerValue (ffrAlgorithm));
-
-  if (m_isAnrEnabled)
-    {
-      Ptr<NistLteAnr> anr = CreateObject<NistLteAnr> (cellId);
-      rrc->SetNistLteAnrSapProvider (anr->GetNistLteAnrSapProvider ());
-      anr->SetNistLteAnrSapUser (rrc->GetNistLteAnrSapUser ());
-      dev->SetAttribute ("NistLteAnr", PointerValue (anr));
-    }
-
-  phy->SetDevice (dev);
-  dlPhy->SetDevice (dev);
-  ulPhy->SetDevice (dev);
-
-  n->AddDevice (dev);
-  ulPhy->SetNistLtePhyRxDataEndOkCallback (MakeCallback (&NistLteEnbPhy::PhyPduReceived, phy));
-  ulPhy->SetNistLtePhyRxCtrlEndOkCallback (MakeCallback (&NistLteEnbPhy::ReceiveNistLteControlMessageList, phy));
-  ulPhy->SetNistLtePhyUlHarqFeedbackCallback (MakeCallback (&NistLteEnbPhy::ReceiveLteUlHarqFeedback, phy));
-  rrc->SetForwardUpCallback (MakeCallback (&NistLteEnbNetDevice::Receive, dev));
-
-  NS_LOG_LOGIC ("set the propagation model frequencies");
-  double dlFreq = NistLteSpectrumValueHelper::GetCarrierFrequency (dev->GetDlEarfcn ());
-  NS_LOG_LOGIC ("DL freq: " << dlFreq);
-  bool dlFreqOk = m_downlinkPathlossModel->SetAttributeFailSafe ("Frequency", DoubleValue (dlFreq));
-  if (!dlFreqOk)
-    {
-      NS_LOG_WARN ("DL propagation model does not have a Frequency attribute");
-    }
-  double ulFreq = NistLteSpectrumValueHelper::GetCarrierFrequency (dev->GetUlEarfcn ());
-  NS_LOG_LOGIC ("UL freq: " << ulFreq);
-  bool ulFreqOk = m_uplinkPathlossModel->SetAttributeFailSafe ("Frequency", DoubleValue (ulFreq));
-  if (!ulFreqOk)
-    {
-      NS_LOG_WARN ("UL propagation model does not have a Frequency attribute");
-    }
-
-  dev->Initialize ();
-
-  m_uplinkChannel->AddRx (ulPhy);
-
-  if (m_epcHelper != 0)
-    {
-      NS_LOG_INFO ("adding this eNB to the EPC");
-      m_epcHelper->AddEnb (n, dev, dev->GetCellId ());
-      Ptr<NistEpcEnbApplication> enbApp = n->GetApplication (0)->GetObject<NistEpcEnbApplication> ();
-      NS_ASSERT_MSG (enbApp != 0, "cannot retrieve NistEpcEnbApplication");
-
-      // S1 SAPs
-      rrc->SetS1SapProvider (enbApp->GetS1SapProvider ());
-      enbApp->SetS1SapUser (rrc->GetS1SapUser ());
-
-      // X2 SAPs
-      Ptr<NistEpcX2> x2 = n->GetObject<NistEpcX2> ();
-      x2->SetNistEpcX2SapUser (rrc->GetNistEpcX2SapUser ());
-      rrc->SetNistEpcX2SapProvider (x2->GetNistEpcX2SapProvider ());
-    }
-
-  return dev;
-}
-
-Ptr<NetDevice>
 NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
 {
   NS_LOG_FUNCTION (this);
-  Ptr<NistLteSpectrumPhy> dlPhy = CreateObject<NistLteSpectrumPhy> ();
-  Ptr<NistLteSpectrumPhy> ulPhy = CreateObject<NistLteSpectrumPhy> ();
-  Ptr<NistLteSpectrumPhy> slPhy;
+  Ptr<NrV2XSpectrumPhy> dlPhy = CreateObject<NrV2XSpectrumPhy> ();
+  Ptr<NrV2XSpectrumPhy> ulPhy = CreateObject<NrV2XSpectrumPhy> ();
+  Ptr<NrV2XSpectrumPhy> slPhy;
   if (m_useSidelink || m_useDiscovery) {  //We use Sidelink for C-V2X Mode 4 operations
-    slPhy = CreateObject<NistLteSpectrumPhy> ();
+    slPhy = CreateObject<NrV2XSpectrumPhy> ();
     slPhy->SetAttribute ("HalfDuplexPhy", PointerValue (ulPhy));  
    }
 
-  Ptr<NistLteUePhy> phy = CreateObject<NistLteUePhy> (dlPhy, ulPhy);
+  Ptr<NrV2XUePhy> phy = CreateObject<NrV2XUePhy> (dlPhy, ulPhy);
   if (m_useSidelink || m_useDiscovery) {
     phy->SetSlSpectrumPhy (slPhy);
   }
@@ -718,36 +332,36 @@ NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
   phy->SetHarqPhyModule (harq);
 
   Ptr<NistLteChunkProcessor> pRs = Create<NistLteChunkProcessor> ();
-  pRs->AddCallback (MakeCallback (&NistLteUePhy::ReportRsReceivedPower, phy));
+  pRs->AddCallback (MakeCallback (&NrV2XUePhy::ReportRsReceivedPower, phy));
   dlPhy->AddRsPowerChunkProcessor (pRs);
 
   Ptr<NistLteChunkProcessor> pInterf = Create<NistLteChunkProcessor> ();
-  pInterf->AddCallback (MakeCallback (&NistLteUePhy::ReportInterference, phy));
+  pInterf->AddCallback (MakeCallback (&NrV2XUePhy::ReportInterference, phy));
   dlPhy->AddInterferenceCtrlChunkProcessor (pInterf); // for RSRQ evaluation of UE Measurements
 
   Ptr<NistLteChunkProcessor> pCtrl = Create<NistLteChunkProcessor> ();
-  pCtrl->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSinrPerceived, dlPhy));
+  pCtrl->AddCallback (MakeCallback (&NrV2XSpectrumPhy::UpdateSinrPerceived, dlPhy));
   dlPhy->AddCtrlSinrChunkProcessor (pCtrl);
 
   Ptr<NistLteChunkProcessor> pData = Create<NistLteChunkProcessor> ();
-  pData->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSinrPerceived, dlPhy));
+  pData->AddCallback (MakeCallback (&NrV2XSpectrumPhy::UpdateSinrPerceived, dlPhy));
   dlPhy->AddDataSinrChunkProcessor (pData);
 
   if (m_useSidelink || m_useDiscovery) {  // for Sidelink
     Ptr<NistLteSlChunkProcessor> pSlSinr = Create<NistLteSlChunkProcessor> ();
-    pSlSinr->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSlSinrPerceived, slPhy));
+    pSlSinr->AddCallback (MakeCallback (&NrV2XSpectrumPhy::UpdateSlSinrPerceived, slPhy));
     slPhy->AddSlSinrChunkProcessor (pSlSinr);
     
     Ptr<NistLteSlChunkProcessor> pSlSignal = Create<NistLteSlChunkProcessor> ();
-    pSlSignal->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSlSigPerceived, slPhy));
+    pSlSignal->AddCallback (MakeCallback (&NrV2XSpectrumPhy::UpdateSlSigPerceived, slPhy));
     slPhy->AddSlSignalChunkProcessor (pSlSignal);
 
     Ptr<NistLteSlChunkProcessor> pSlInterference = Create<NistLteSlChunkProcessor> ();
-    pSlInterference->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSlIntPerceived, slPhy));
+    pSlInterference->AddCallback (MakeCallback (&NrV2XSpectrumPhy::UpdateSlIntPerceived, slPhy));
     slPhy->AddSlInterferenceChunkProcessor (pSlInterference);
     /*
     Ptr<NistLteChunkProcessor> pData = Create<NistLteChunkProcessor> ();
-    pData->AddCallback (MakeCallback (&NistLteSpectrumPhy::UpdateSinrPerceived, slPhy));
+    pData->AddCallback (MakeCallback (&NrV2XSpectrumPhy::UpdateSinrPerceived, slPhy));
     slPhy->AddDataSinrChunkProcessor (pData);
     */
   }
@@ -755,15 +369,15 @@ NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
   if (m_usePdschForCqiGeneration)
     {
       // CQI calculation based on PDCCH for signal and PDSCH for interference
-      pCtrl->AddCallback (MakeCallback (&NistLteUePhy::GenerateMixedCqiReport, phy));
+      pCtrl->AddCallback (MakeCallback (&NrV2XUePhy::GenerateMixedCqiReport, phy));
       Ptr<NistLteChunkProcessor> pDataInterf = Create<NistLteChunkProcessor> ();      
-      pDataInterf->AddCallback (MakeCallback (&NistLteUePhy::ReportDataInterference, phy));
+      pDataInterf->AddCallback (MakeCallback (&NrV2XUePhy::ReportDataInterference, phy));
       dlPhy->AddInterferenceDataChunkProcessor (pDataInterf);
     }
   else
     {
       // CQI calculation based on PDCCH for both signal and interference
-      pCtrl->AddCallback (MakeCallback (&NistLteUePhy::GenerateCtrlCqiReport, phy));
+      pCtrl->AddCallback (MakeCallback (&NrV2XUePhy::GenerateCtrlCqiReport, phy));
     }
 
 
@@ -791,10 +405,9 @@ NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
     slPhy->SetAntenna (antenna);
   }
 
-  // create a UE mac with an attribute to indicate the UE scheduler
-  Ptr<NistLteUeMac> mac = CreateObjectWithAttributes<NistLteUeMac> (
-                          "NistUlScheduler",
-                           StringValue (NistLteHelper::GetUlSchedulerType ()));
+  // create UE mac
+  Ptr<NrV2XUeMac> mac = CreateObjectWithAttributes<NrV2XUeMac> ();
+  // create UE rrc
   Ptr<NistLteUeRrc> rrc = CreateObject<NistLteUeRrc> ();
 
   if (m_useIdealRrc)  // default value = true
@@ -807,11 +420,7 @@ NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
     }
   else
     {
-      Ptr<NistLteUeRrcProtocolReal> rrcProtocol = CreateObject<NistLteUeRrcProtocolReal> ();
-      rrcProtocol->SetUeRrc (rrc);
-      rrc->AggregateObject (rrcProtocol);
-      rrcProtocol->SetNistLteUeRrcSapProvider (rrc->GetNistLteUeRrcSapProvider ());
-      rrc->SetNistLteUeRrcSapUser (rrcProtocol->GetNistLteUeRrcSapUser ());
+       NS_FATAL_ERROR("Only ideal RRC is available");
     }
   
   if (m_epcHelper != 0)
@@ -845,8 +454,8 @@ NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
   Ptr<NistLteUeNetDevice> dev = m_ueNetDeviceFactory.Create<NistLteUeNetDevice> ();
   dev->SetNode (n);
   dev->SetAttribute ("Imsi", UintegerValue (imsi));
-  dev->SetAttribute ("NistLteUePhy", PointerValue (phy));
-  dev->SetAttribute ("NistLteUeMac", PointerValue (mac));
+  dev->SetAttribute ("NrV2XUePhy", PointerValue (phy));
+  dev->SetAttribute ("NrV2XUeMac", PointerValue (mac));
   dev->SetAttribute ("NistLteUeRrc", PointerValue (rrc));
   dev->SetAttribute ("NistEpcUeNas", PointerValue (nas));
 
@@ -859,21 +468,21 @@ NistLteHelper::InstallSingleUeDevice (Ptr<Node> n)
   nas->SetDevice (dev);
 
   n->AddDevice (dev);
-  dlPhy->SetNistLtePhyRxDataEndOkCallback (MakeCallback (&NistLteUePhy::PhyPduReceived, phy));
-  dlPhy->SetNistLtePhyRxCtrlEndOkCallback (MakeCallback (&NistLteUePhy::ReceiveNistLteControlMessageList, phy));
-  dlPhy->SetNistLtePhyRxPssCallback (MakeCallback (&NistLteUePhy::ReceivePss, phy));
-  dlPhy->SetNistLtePhyDlHarqFeedbackCallback (MakeCallback (&NistLteUePhy::ReceiveLteDlHarqFeedback, phy));
+  dlPhy->SetNistLtePhyRxDataEndOkCallback (MakeCallback (&NrV2XUePhy::PhyPduReceived, phy));
+  dlPhy->SetNistLtePhyRxCtrlEndOkCallback (MakeCallback (&NrV2XUePhy::ReceiveNistLteControlMessageList, phy));
+  dlPhy->SetNistLtePhyRxPssCallback (MakeCallback (&NrV2XUePhy::ReceivePss, phy));
+  dlPhy->SetNistLtePhyDlHarqFeedbackCallback (MakeCallback (&NrV2XUePhy::ReceiveLteDlHarqFeedback, phy));
   nas->SetForwardUpCallback (MakeCallback (&NistLteUeNetDevice::Receive, dev));
 
   if (m_useSidelink || m_useDiscovery) {  // Sidelink configuration for Mode 4 operations :)
-    slPhy->SetUnimoreReportRssiCallback (MakeCallback (&NistLteUePhy::UnimoreReceivedRssi, phy));
-    slPhy->SetNistLtePhyRxDataEndOkCallback (MakeCallback (&NistLteUePhy::PhyPduReceived, phy));
-    slPhy->SetNistLtePhyRxCtrlEndOkCallback (MakeCallback (&NistLteUePhy::ReceiveNistLteControlMessageList, phy));
-    slPhy->SetNistLtePhyRxSlssCallback (MakeCallback (&NistLteUePhy::ReceiveSlss, phy));
+    slPhy->SetUnimoreReportRssiCallback (MakeCallback (&NrV2XUePhy::UnimoreReceivedRssi, phy));
+    slPhy->SetNistLtePhyRxDataEndOkCallback (MakeCallback (&NrV2XUePhy::PhyPduReceived, phy));
+    slPhy->SetNistLtePhyRxCtrlEndOkCallback (MakeCallback (&NrV2XUePhy::ReceiveNistLteControlMessageList, phy));
+    slPhy->SetNistLtePhyRxSlssCallback (MakeCallback (&NrV2XUePhy::ReceiveSlss, phy));
 
   // TODO FIXME NEW for V2X 
 
-    slPhy->SetNistLtePhyRxDataStartCallback (MakeCallback (&NistLteUePhy::MeasurePsschRsrp, phy));
+    slPhy->SetNistLtePhyRxDataStartCallback (MakeCallback (&NrV2XUePhy::MeasurePsschRsrp, phy));
   }
   
   if (m_epcHelper != 0)
@@ -928,72 +537,6 @@ NistLteHelper::Attach (Ptr<NetDevice> ueDevice)
                                   NistEpsBearer (NistEpsBearer::NGBR_VIDEO_TCP_DEFAULT));
 }
 
-void
-NistLteHelper::Attach (NetDeviceContainer ueDevices, Ptr<NetDevice> enbDevice)
-{
-  NS_LOG_FUNCTION (this);
-  for (NetDeviceContainer::Iterator i = ueDevices.Begin (); i != ueDevices.End (); ++i)
-    {
-      Attach (*i, enbDevice);
-    }
-}
-
-void
-NistLteHelper::Attach (Ptr<NetDevice> ueDevice, Ptr<NetDevice> enbDevice)
-{
-  NS_LOG_FUNCTION (this);
-  //enbRrc->SetCellId (enbDevice->GetObject<NistLteEnbNetDevice> ()->GetCellId ());
-
-  Ptr<NistLteUeNetDevice> ueLteDevice = ueDevice->GetObject<NistLteUeNetDevice> ();
-  Ptr<NistLteEnbNetDevice> enbLteDevice = enbDevice->GetObject<NistLteEnbNetDevice> ();
-
-  Ptr<NistEpcUeNas> ueNas = ueLteDevice->GetNas ();
-  ueNas->Connect (enbLteDevice->GetCellId (), enbLteDevice->GetDlEarfcn ());
-
-  if (m_epcHelper != 0)
-    {
-      // activate default EPS bearer
-      m_epcHelper->ActivateNistEpsBearer (ueDevice, ueLteDevice->GetImsi (), NistEpcTft::Default (), NistEpsBearer (NistEpsBearer::NGBR_VIDEO_TCP_DEFAULT));
-    }
-
-  // tricks needed for the simplified LTE-only simulations 
-  if (m_epcHelper == 0)
-    {
-      ueDevice->GetObject<NistLteUeNetDevice> ()->SetTargetEnb (enbDevice->GetObject<NistLteEnbNetDevice> ());
-    }
-}
-
-void
-NistLteHelper::AttachToClosestEnb (NetDeviceContainer ueDevices, NetDeviceContainer enbDevices)
-{
-  NS_LOG_FUNCTION (this);
-  for (NetDeviceContainer::Iterator i = ueDevices.Begin (); i != ueDevices.End (); ++i)
-    {
-      AttachToClosestEnb (*i, enbDevices);
-    }
-}
-
-void
-NistLteHelper::AttachToClosestEnb (Ptr<NetDevice> ueDevice, NetDeviceContainer enbDevices)
-{
-  NS_LOG_FUNCTION (this);
-  NS_ASSERT_MSG (enbDevices.GetN () > 0, "empty enb device container");
-  Vector uepos = ueDevice->GetNode ()->GetObject<MobilityModel> ()->GetPosition ();
-  double minDistance = std::numeric_limits<double>::infinity ();
-  Ptr<NetDevice> closestEnbDevice;
-  for (NetDeviceContainer::Iterator i = enbDevices.Begin (); i != enbDevices.End (); ++i)
-    {
-      Vector enbpos = (*i)->GetNode ()->GetObject<MobilityModel> ()->GetPosition ();
-      double distance = CalculateDistance (uepos, enbpos);
-      if (distance < minDistance)
-        {
-          minDistance = distance;
-          closestEnbDevice = *i;
-        }
-    }
-  NS_ASSERT (closestEnbDevice != 0);
-  Attach (ueDevice, closestEnbDevice);
-}
 
 uint8_t
 NistLteHelper::ActivateDedicatedNistEpsBearer (NetDeviceContainer ueDevices, NistEpsBearer bearer, Ptr<NistEpcTft> tft)
@@ -1102,485 +645,30 @@ NistLteHelper::StopDiscovery (Ptr<NetDevice> ueDevice, std::list<uint32_t> apps,
 }
 
 
-/**
- * \ingroup lte
- *
- * DrbActivatior allows user to activate bearers for UEs
- * when EPC is not used. Activation function is hooked to
- * the Enb RRC Connection Estabilished trace source. When
- * UE change its RRC state to CONNECTED_NORMALLY, activation
- * function is called and bearer is activated.
-*/
-class NistDrbActivator : public SimpleRefCount<NistDrbActivator>
-{
-public:
-  /**
-  * NistDrbActivator Constructor
-  *
-  * \param ueDevice the UeNetDevice for which bearer will be activated
-  * \param bearer the bearer configuration
-  */
-  NistDrbActivator (Ptr<NetDevice> ueDevice, NistEpsBearer bearer);
-
-  /**
-   * Function hooked to the Enb RRC Connection Established trace source
-   * Fired upon successful RRC connection establishment.
-   *
-   * \param a NistDrbActivator object
-   * \param context
-   * \param imsi
-   * \param cellId
-   * \param rnti
-   */
-  static void ActivateCallback (Ptr<NistDrbActivator> a, std::string context, uint64_t imsi, uint16_t cellId, uint16_t rnti);
-
-  /**
-   * Procedure firstly checks if bearer was not activated, if IMSI
-   * from trace source equals configured one and if UE is really
-   * in RRC connected state. If all requirements are met, it performs
-   * bearer activation.
-   *
-   * \param imsi
-   * \param cellId
-   * \param rnti
-   */
-  void ActivateDrb (uint64_t imsi, uint16_t cellId, uint16_t rnti);
-private:
-  /**
-   * Bearer can be activated only once. This value stores state of
-   * bearer. Initially is set to false and changed to true during
-   * bearer activation.
-   */
-  bool m_active;
-  /**
-   * UeNetDevice for which bearer will be activated
-   */
-  Ptr<NetDevice> m_ueDevice;
-  /**
-   * Configuration of bearer which will be activated
-   */
-  NistEpsBearer m_bearer;
-  /**
-   * imsi the unique UE identifier
-   */
-  uint64_t m_imsi;
-};
-
-NistDrbActivator::NistDrbActivator (Ptr<NetDevice> ueDevice, NistEpsBearer bearer)
-  : m_active (false),
-    m_ueDevice (ueDevice),
-    m_bearer (bearer),
-    m_imsi (m_ueDevice->GetObject<NistLteUeNetDevice> ()->GetImsi ())
-{
-}
-
-void
-NistDrbActivator::ActivateCallback (Ptr<NistDrbActivator> a, std::string context, uint64_t imsi, uint16_t cellId, uint16_t rnti)
-{
-  NS_LOG_FUNCTION (a << context << imsi << cellId << rnti);
-  a->ActivateDrb (imsi, cellId, rnti);
-}
-
-void
-NistDrbActivator::ActivateDrb (uint64_t imsi, uint16_t cellId, uint16_t rnti)
-{ 
-  NS_LOG_FUNCTION (this << imsi << cellId << rnti << m_active);
-  if ((!m_active) && (imsi == m_imsi))
-    {
-      Ptr<NistLteUeRrc> ueRrc = m_ueDevice->GetObject<NistLteUeNetDevice> ()->GetRrc ();
-      NS_ASSERT (ueRrc->GetState () == NistLteUeRrc::CONNECTED_NORMALLY);
-      uint16_t rnti = ueRrc->GetRnti ();
-      Ptr<NistLteEnbNetDevice> enbLteDevice = m_ueDevice->GetObject<NistLteUeNetDevice> ()->GetTargetEnb ();
-      Ptr<NistLteEnbRrc> enbRrc = enbLteDevice->GetObject<NistLteEnbNetDevice> ()->GetRrc ();
-      NS_ASSERT (ueRrc->GetCellId () == enbLteDevice->GetCellId ());
-      Ptr<NistUeManager> ueManager = enbRrc->GetNistUeManager (rnti);
-      NS_ASSERT (ueManager->GetState () == NistUeManager::CONNECTED_NORMALLY
-                 || ueManager->GetState () == NistUeManager::CONNECTION_RECONFIGURATION);
-      NistEpcEnbS1SapUser::NistDataRadioBearerSetupRequestParameters params;
-      params.rnti = rnti;
-      params.bearer = m_bearer;
-      params.bearerId = 0;
-      params.gtpTeid = 0; // don't care
-      enbRrc->GetS1SapUser ()->DataRadioBearerSetupRequest (params);
-      m_active = true;
-    }
-}
-
-
-void 
-NistLteHelper::ActivateDataRadioBearer (Ptr<NetDevice> ueDevice, NistEpsBearer bearer)
-{
-  NS_LOG_FUNCTION (this << ueDevice);
-  NS_ASSERT_MSG (m_epcHelper == 0, "this method must not be used when the EPC is being used");
-
-  // Normally it is the EPC that takes care of activating DRBs
-  // when the UE gets connected. When the EPC is not used, we achieve
-  // the same behavior by hooking a dedicated DRB activation function
-  // to the Enb RRC Connection Established trace source
-
-
-  Ptr<NistLteEnbNetDevice> enbLteDevice = ueDevice->GetObject<NistLteUeNetDevice> ()->GetTargetEnb ();
-
-  std::ostringstream path;
-  path << "/NodeList/" << enbLteDevice->GetNode ()->GetId () 
-       << "/DeviceList/" << enbLteDevice->GetIfIndex ()
-       << "/NistLteEnbRrc/ConnectionEstablished";
-  Ptr<NistDrbActivator> arg = Create<NistDrbActivator> (ueDevice, bearer);
-  Config::Connect (path.str (), MakeBoundCallback (&NistDrbActivator::ActivateCallback, arg));
-}
-
-void
-NistLteHelper::AddX2Interface (NodeContainer enbNodes)
-{
-  NS_LOG_FUNCTION (this);
-
-  NS_ASSERT_MSG (m_epcHelper != 0, "X2 interfaces cannot be set up when the EPC is not used");
-
-  for (NodeContainer::Iterator i = enbNodes.Begin (); i != enbNodes.End (); ++i)
-    {
-      for (NodeContainer::Iterator j = i + 1; j != enbNodes.End (); ++j)
-        {
-          AddX2Interface (*i, *j);
-        }
-    }
-}
-
-void
-NistLteHelper::AddX2Interface (Ptr<Node> enbNode1, Ptr<Node> enbNode2)
-{
-  NS_LOG_FUNCTION (this);
-  NS_LOG_INFO ("setting up the X2 interface");
-
-  m_epcHelper->AddX2Interface (enbNode1, enbNode2);
-}
-
-void
-NistLteHelper::HandoverRequest (Time hoTime, Ptr<NetDevice> ueDev, Ptr<NetDevice> sourceEnbDev, Ptr<NetDevice> targetEnbDev)
-{
-  NS_LOG_FUNCTION (this << ueDev << sourceEnbDev << targetEnbDev);
-  NS_ASSERT_MSG (m_epcHelper, "Handover requires the use of the EPC - did you forget to call NistLteHelper::SetNistEpcHelper () ?");
-  Simulator::Schedule (hoTime, &NistLteHelper::DoHandoverRequest, this, ueDev, sourceEnbDev, targetEnbDev);
-}
-
-void
-NistLteHelper::DoHandoverRequest (Ptr<NetDevice> ueDev, Ptr<NetDevice> sourceEnbDev, Ptr<NetDevice> targetEnbDev)
-{
-  NS_LOG_FUNCTION (this << ueDev << sourceEnbDev << targetEnbDev);
-
-  uint16_t targetCellId = targetEnbDev->GetObject<NistLteEnbNetDevice> ()->GetCellId ();
-  Ptr<NistLteEnbRrc> sourceRrc = sourceEnbDev->GetObject<NistLteEnbNetDevice> ()->GetRrc ();
-  uint16_t rnti = ueDev->GetObject<NistLteUeNetDevice> ()->GetRrc ()->GetRnti ();
-  sourceRrc->SendHandoverRequest (rnti, targetCellId);
-}
-
-void
-NistLteHelper::DeActivateDedicatedNistEpsBearer (Ptr<NetDevice> ueDevice,Ptr<NetDevice> enbDevice, uint8_t bearerId)
-{
-  NS_LOG_FUNCTION (this << ueDevice << bearerId);
-  NS_ASSERT_MSG (m_epcHelper != 0, "Dedicated EPS bearers cannot be de-activated when the EPC is not used");
-  NS_ASSERT_MSG (bearerId != 1, "Default bearer cannot be de-activated until and unless and UE is released");
-
-  DoDeActivateDedicatedNistEpsBearer (ueDevice, enbDevice, bearerId);
-}
-
-void
-NistLteHelper::DoDeActivateDedicatedNistEpsBearer (Ptr<NetDevice> ueDevice, Ptr<NetDevice> enbDevice, uint8_t bearerId)
-{
-  NS_LOG_FUNCTION (this << ueDevice << bearerId);
-
-  //Extract IMSI and rnti
-  uint64_t imsi = ueDevice->GetObject<NistLteUeNetDevice> ()->GetImsi ();
-  uint16_t rnti = ueDevice->GetObject<NistLteUeNetDevice> ()->GetRrc ()->GetRnti ();
-
-
-  Ptr<NistLteEnbRrc> enbRrc = enbDevice->GetObject<NistLteEnbNetDevice> ()->GetRrc ();
-
-  enbRrc->DoSendReleaseDataRadioBearer (imsi,rnti,bearerId);
-}
-
-
-void 
-NistLteHelper::ActivateDataRadioBearer (NetDeviceContainer ueDevices, NistEpsBearer bearer)
-{
-  NS_LOG_FUNCTION (this);
-  for (NetDeviceContainer::Iterator i = ueDevices.Begin (); i != ueDevices.End (); ++i)
-    {
-      ActivateDataRadioBearer (*i, bearer);
-    }
-}
 
 void
 NistLteHelper::EnableLogComponents (void)
 {
   LogComponentEnable ("NistLteHelper", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteEnbRrc", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteUeRrc", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteEnbMac", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteUeMac", LOG_LEVEL_ALL);
+  LogComponentEnable ("NrV2XUeMac", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteRlc", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteRlcUm", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteRlcAm", LOG_LEVEL_ALL);
-  LogComponentEnable ("RrNistFfMacScheduler", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistPfFfMacScheduler", LOG_LEVEL_ALL);
 
   LogComponentEnable ("NistLtePhy", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteEnbPhy", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteUePhy", LOG_LEVEL_ALL);
+  LogComponentEnable ("NrV2XUePhy", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteSpectrumValueHelper", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteSpectrumPhy", LOG_LEVEL_ALL);
+  LogComponentEnable ("NrV2XSpectrumPhy", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteInterference", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteChunkProcessor", LOG_LEVEL_ALL);
 
   std::string propModelStr = m_dlPathlossModelFactory.GetTypeId ().GetName ().erase (0,5).c_str ();
   LogComponentEnable ("NistLteNetDevice", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteUeNetDevice", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteEnbNetDevice", LOG_LEVEL_ALL);
-
-  LogComponentEnable ("NistRadioBearerStatsCalculator", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteStatsCalculator", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistMacStatsCalculator", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistPhyTxStatsCalculator", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistPhyRxStatsCalculator", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistPhyStatsCalculator", LOG_LEVEL_ALL);
-
 
 }
 
-void
-NistLteHelper::EnableTraces (void)
-{
-  EnablePhyTraces ();
-  EnableMacTraces ();
-  EnableRlcTraces ();
-  EnablePdcpTraces ();
-}
-
-void
-NistLteHelper::EnableRlcTraces (void)
-{
-  NS_ASSERT_MSG (m_rlcStats == 0, "please make sure that NistLteHelper::EnableRlcTraces is called at most once");
-  m_rlcStats = CreateObject<NistRadioBearerStatsCalculator> ("RLC");
-  m_radioBearerStatsConnector.EnableRlcStats (m_rlcStats);
-}
-
-int64_t
-NistLteHelper::AssignStreams (NetDeviceContainer c, int64_t stream)
-{
-  int64_t currentStream = stream;
-  if ((m_fadingModule != 0) && (m_fadingStreamsAssigned == false))
-    {
-      Ptr<NistTraceFadingLossModel> tflm = m_fadingModule->GetObject<NistTraceFadingLossModel> ();
-      if (tflm != 0)
-        {
-          currentStream += tflm->AssignStreams (currentStream);
-          m_fadingStreamsAssigned = true;
-        }
-    }
-  Ptr<NetDevice> netDevice;
-  for (NetDeviceContainer::Iterator i = c.Begin (); i != c.End (); ++i)
-    {
-      netDevice = (*i);
-      Ptr<NistLteEnbNetDevice> lteEnb = DynamicCast<NistLteEnbNetDevice> (netDevice);
-      if (lteEnb)
-        {
-          Ptr<NistLteSpectrumPhy> dlPhy = lteEnb->GetPhy ()->GetDownlinkSpectrumPhy ();
-          Ptr<NistLteSpectrumPhy> ulPhy = lteEnb->GetPhy ()->GetUplinkSpectrumPhy ();
-          currentStream += dlPhy->AssignStreams (currentStream);
-          currentStream += ulPhy->AssignStreams (currentStream);
-        }
-      Ptr<NistLteUeNetDevice> lteUe = DynamicCast<NistLteUeNetDevice> (netDevice);
-      if (lteUe)
-        {
-          Ptr<NistLteSpectrumPhy> dlPhy = lteUe->GetPhy ()->GetDownlinkSpectrumPhy ();
-          Ptr<NistLteSpectrumPhy> ulPhy = lteUe->GetPhy ()->GetUplinkSpectrumPhy ();
-          Ptr<NistLteUeMac> ueMac = lteUe->GetMac ();
-          currentStream += dlPhy->AssignStreams (currentStream);
-          currentStream += ulPhy->AssignStreams (currentStream);
-          currentStream += ueMac->AssignStreams (currentStream);
-        }
-    }
-  return (currentStream - stream);
-}  
-
-void
-NistLteHelper::EnablePhyTraces (void)
-{
-  EnableDlPhyTraces ();
-  EnableUlPhyTraces ();
-  EnableSlPhyTraces ();
-  EnableDlTxPhyTraces ();
-  EnableUlTxPhyTraces ();
-  EnableSlTxPhyTraces ();
-  EnableDlRxPhyTraces ();
-  EnableUlRxPhyTraces ();
-  EnableSlRxPhyTraces ();
-  EnableSlPscchRxPhyTraces ();
-}
-
-void
-NistLteHelper::EnableDlTxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteEnbPhy/DlPhyTransmission",
-                   MakeBoundCallback (&NistPhyTxStatsCalculator::DlPhyTransmissionCallback, m_phyTxStats));
-}
-
-void
-NistLteHelper::EnableUlTxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUePhy/UlPhyTransmission",
-                   MakeBoundCallback (&NistPhyTxStatsCalculator::UlPhyTransmissionCallback, m_phyTxStats));
-}
-
-void
-NistLteHelper::EnableSlTxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUePhy/SlPhyTransmission",
-                   MakeBoundCallback (&NistPhyTxStatsCalculator::SlPhyTransmissionCallback, m_phyTxStats));
-}
-
-void
-NistLteHelper::EnableDlRxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUePhy/DlSpectrumPhy/DlPhyReception",
-                   MakeBoundCallback (&NistPhyRxStatsCalculator::DlPhyReceptionCallback, m_phyRxStats));
-}
-
-void
-NistLteHelper::EnableUlRxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteEnbPhy/UlSpectrumPhy/UlPhyReception",
-                   MakeBoundCallback (&NistPhyRxStatsCalculator::UlPhyReceptionCallback, m_phyRxStats));
-}
-
-void
-NistLteHelper::EnableSlRxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUePhy/SlSpectrumPhy/SlPhyReception",
-                   MakeBoundCallback (&NistPhyRxStatsCalculator::SlPhyReceptionCallback, m_phyRxStats));
-}
-
-void
-NistLteHelper::EnableSlPscchRxPhyTraces (void)
-{
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUePhy/SlSpectrumPhy/SlPscchReception",
-                   MakeBoundCallback (&NistPhyRxStatsCalculator::SlPscchReceptionCallback, m_phyRxStats));
-}
-
-void
-NistLteHelper::EnableMacTraces (void)
-{
-  EnableDlMacTraces ();
-  EnableUlMacTraces ();
-  EnableSlUeMacTraces ();
-  EnableSlSchUeMacTraces ();
-}
-
-
-void
-NistLteHelper::EnableDlMacTraces (void)
-{
-  NS_LOG_FUNCTION_NOARGS ();
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteEnbMac/DlScheduling",
-                   MakeBoundCallback (&NistMacStatsCalculator::DlSchedulingCallback, m_macStats));
-}
-
-void
-NistLteHelper::EnableUlMacTraces (void)
-{
-  NS_LOG_FUNCTION_NOARGS ();
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteEnbMac/UlScheduling",
-                   MakeBoundCallback (&NistMacStatsCalculator::UlSchedulingCallback, m_macStats));
-}
-
-void
-NistLteHelper::EnableSlUeMacTraces (void)
-{
-  NS_LOG_FUNCTION_NOARGS ();
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUeMac/SlUeScheduling",
-                   MakeBoundCallback (&NistMacStatsCalculator::SlUeSchedulingCallback, m_macStats));
-}
-
-void
-NistLteHelper::EnableSlSchUeMacTraces (void)
-{
-  NS_LOG_FUNCTION_NOARGS ();
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUeMac/SlSharedChUeScheduling",
-                   MakeBoundCallback (&NistMacStatsCalculator::SlSharedChUeSchedulingCallback, m_macStats));
-}
-
-void
-NistLteHelper::EnableDlPhyTraces (void)
-{
-  NS_LOG_FUNCTION_NOARGS ();
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteUePhy/ReportCurrentCellRsrpSinr",
-                   MakeBoundCallback (&NistPhyStatsCalculator::ReportCurrentCellRsrpSinrCallback, m_phyStats));
-}
-
-void
-NistLteHelper::EnableUlPhyTraces (void)
-{
-  NS_LOG_FUNCTION_NOARGS ();
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteEnbPhy/ReportUeSinr",
-                   MakeBoundCallback (&NistPhyStatsCalculator::ReportUeSinr, m_phyStats));
-  Config::Connect ("/NodeList/*/DeviceList/*/NistLteEnbPhy/ReportInterference",
-                   MakeBoundCallback (&NistPhyStatsCalculator::ReportInterference, m_phyStats));
-
-}
-
-void
-NistLteHelper::EnableSlPhyTraces (void)
-{
-  //TBD
-}
-
-Ptr<NistRadioBearerStatsCalculator>
-NistLteHelper::GetRlcStats (void)
-{
-  return m_rlcStats;
-}
-
-void
-NistLteHelper::EnablePdcpTraces (void)
-{
-  NS_ASSERT_MSG (m_pdcpStats == 0, "please make sure that NistLteHelper::EnablePdcpTraces is called at most once");
-  m_pdcpStats = CreateObject<NistRadioBearerStatsCalculator> ("PDCP");
-  m_radioBearerStatsConnector.EnablePdcpStats (m_pdcpStats);
-}
-
-Ptr<NistRadioBearerStatsCalculator>
-NistLteHelper::GetPdcpStats (void)
-{
-  return m_pdcpStats;
-}
-
-  /**
-   * Deploys the Sidelink configuration to the eNodeB
-   * \param enbDevices List of devices where to configure sidelink
-   * \param slConfiguration Sidelink configuration
-   */
-void
-NistLteHelper::InstallSidelinkConfiguration (NetDeviceContainer enbDevices, Ptr<LteEnbRrcSl> slConfiguration)
-{
-  //for each device, install a copy of the configuration
-  NS_LOG_FUNCTION (this);
-  for (NetDeviceContainer::Iterator i = enbDevices.Begin (); i != enbDevices.End (); ++i)
-    {
-      InstallSidelinkConfiguration (*i, slConfiguration->Copy());
-    }
-}
-
-  /**
-   * Deploys the Sidelink configuration to the eNodeB
-   * \param enbDevice List of devices where to configure sidelink
-   * \param slConfiguration Sidelink configuration
-   */
-void
-NistLteHelper::InstallSidelinkConfiguration (Ptr<NetDevice> enbDevice, Ptr<LteEnbRrcSl> slConfiguration)
-{
-  Ptr<NistLteEnbRrc> rrc = enbDevice->GetObject<NistLteEnbNetDevice> ()->GetRrc();
-  NS_ASSERT_MSG (rrc != 0, "RRC layer not found");
-  rrc->SetAttribute ("SidelinkConfiguration", PointerValue (slConfiguration));
-}
 
   /**
    * Deploys the Sidelink configuration to the UEs
@@ -1765,7 +853,7 @@ NistLteHelper::CalcSidelinkRsrp (double txPower, double ulEarfcn, double ulBandw
       rbMask.push_back (i);
     }
   NistLteSpectrumValueHelper psdHelper;
-  Ptr<SpectrumValue> psd = psdHelper.CreateUlTxPowerSpectralDensity (ulEarfcn, ulBandwidth, txPower, rbMask);
+  Ptr<SpectrumValue> psd = psdHelper.CreateUlTxPowerSpectralDensity (ulEarfcn, ulBandwidth, txPower, rbMask, 1.0, 15, 4, false);
   
   double rsrp= DoCalcRsrp (lossModel, psd, txDevice->GetObject<NistLteUeNetDevice> ()->GetPhy()->GetUlSpectrumPhy (), rxDevice->GetObject<NistLteUeNetDevice> ()->GetPhy()->GetUlSpectrumPhy ());
   

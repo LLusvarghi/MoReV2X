@@ -56,6 +56,7 @@ NistEpsBearerTag::NistEpsBearerTag ()
   : m_rnti (0),
     m_bid (0)
 {
+std::cin.get();
 }
 NistEpsBearerTag::NistEpsBearerTag (uint16_t rnti, uint8_t bid)
   : m_rnti (rnti),

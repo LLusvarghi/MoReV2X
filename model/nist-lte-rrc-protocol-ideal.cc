@@ -28,8 +28,6 @@
 
 #include "nist-lte-rrc-protocol-ideal.h"
 #include "nist-lte-ue-rrc.h"
-#include "nist-lte-enb-rrc.h"
-#include "nist-lte-enb-net-device.h"
 #include "nr-v2x-ue-net-device.h"
 
 namespace ns3 {
@@ -181,7 +179,7 @@ NistLteUeRrcProtocolIdeal::SetEnbRrcSapProvider ()
   uint16_t cellId = m_rrc->GetCellId ();  
 
   // walk list of all nodes to get the peer eNB
-  Ptr<NistLteEnbNetDevice> enbDev;
+
   NodeList::Iterator listEnd = NodeList::End ();
   bool found = false;
   for (NodeList::Iterator i = NodeList::Begin (); 
@@ -190,29 +188,9 @@ NistLteUeRrcProtocolIdeal::SetEnbRrcSapProvider ()
     {
       Ptr<Node> node = *i;
       int nDevs = node->GetNDevices ();
-      for (int j = 0; 
-           (j < nDevs) && (!found);
-           j++)
-        {
-          enbDev = node->GetDevice (j)->GetObject <NistLteEnbNetDevice> ();
-          if (enbDev == 0)
-            {
-              continue;
-            }
-          else
-            {
-              if (enbDev->GetCellId () == cellId)
-                {
-                  found = true;          
-                  break;
-                }
-            }
-        }
-    }
+     }
   NS_ASSERT_MSG (found, " Unable to find eNB with CellId =" << cellId);
-  m_enbRrcSapProvider = enbDev->GetRrc ()->GetNistLteEnbRrcSapProvider ();  
-  Ptr<NistLteEnbRrcProtocolIdeal> enbRrcProtocolIdeal = enbDev->GetRrc ()->GetObject<NistLteEnbRrcProtocolIdeal> ();
-  enbRrcProtocolIdeal->SetUeRrcSapProvider (m_rnti, m_ueRrcSapProvider);
+
 }
 
 

@@ -22,14 +22,13 @@
 #include <ns3/log.h>
 
 #include <ns3/nist-epc-helper.h>
-
-#include "nist-lte-enb-net-device.h"
+#include "nr-v2x-ue-net-device.h"
 #include "nist-epc-ue-nas.h"
 #include "nist-lte-as-sap.h"
 #include "ns3/ipv4-header.h"
 #include "ns3/packet.h"
 
-#include "ns3/v2x-lte-tag.h"
+#include "ns3/nr-v2x-tag.h"
 
 
 namespace ns3 {
@@ -266,10 +265,10 @@ NistEpcUeNas::Send (Ptr<Packet> packet)
         Ipv4Header ipv4Header;
         pCopy->RemoveHeader (ipv4Header);
         
-     /*   V2xLteTag v2xLteTag;
-        if (pCopy -> FindFirstMatchingByteTag (v2xLteTag))
+     /*   NrV2XTag v2xTag;
+        if (pCopy -> FindFirstMatchingByteTag (v2xTag))
         {
-             std::cout << "PPPP: " << (int) v2xLteTag.GetPPPP () << ", V2X Message Type: " << (int) v2xLteTag.GetMessageType () << "\r\n" ;
+             std::cout << "PPPP: " << (int) v2xTag.GetPPPP () << ", V2X Message Type: " << (int) v2xTag.GetMessageType () << "\r\n" ;
         }*/
 
         for (std::list<Ptr<NistSlTft> >::iterator it = m_slBearersActivatedList.begin ();

@@ -31,7 +31,6 @@
 #include "ns3/trace-source-accessor.h"
 #include "ns3/pointer.h"
 #include "ns3/enum.h"
-#include "ns3/nist-lte-enb-net-device.h"
 #include "nr-v2x-ue-net-device.h"
 #include "nr-v2x-ue-mac.h"
 #include "nist-lte-ue-rrc.h"
@@ -68,16 +67,16 @@ TypeId NistLteUeNetDevice::GetTypeId (void)
                    PointerValue (),
                    MakePointerAccessor (&NistLteUeNetDevice::m_rrc),
                    MakePointerChecker <NistLteUeRrc> ())
-    .AddAttribute ("NistLteUeMac",
+    .AddAttribute ("NrV2XUeMac",
                    "The MAC associated to this UeNetDevice",
                    PointerValue (),
                    MakePointerAccessor (&NistLteUeNetDevice::m_mac),
-                   MakePointerChecker <NistLteUeMac> ())
-    .AddAttribute ("NistLteUePhy",
+                   MakePointerChecker <NrV2XUeMac> ())
+    .AddAttribute ("NrV2XUePhy",
                    "The PHY associated to this UeNetDevice",
                    PointerValue (),
                    MakePointerAccessor (&NistLteUeNetDevice::m_phy),
-                   MakePointerChecker <NistLteUePhy> ())
+                   MakePointerChecker <NrV2XUePhy> ())
     .AddAttribute ("Imsi",
                    "International Mobile Subscriber Identity assigned to this UE",
                    UintegerValue (0),
@@ -120,7 +119,6 @@ void
 NistLteUeNetDevice::DoDispose (void)
 {
   NS_LOG_FUNCTION (this);
-  m_targetEnb = 0;
   m_mac->Dispose ();
   m_mac = 0;
   m_rrc->Dispose ();
@@ -156,7 +154,7 @@ NistLteUeNetDevice::UpdateConfig (void)
 
 
 
-Ptr<NistLteUeMac>
+Ptr<NrV2XUeMac>
 NistLteUeNetDevice::GetMac (void) const
 {
   NS_LOG_FUNCTION (this);
@@ -172,7 +170,7 @@ NistLteUeNetDevice::GetRrc (void) const
 }
 
 
-Ptr<NistLteUePhy>
+Ptr<NrV2XUePhy>
 NistLteUeNetDevice::GetPhy (void) const
 {
   NS_LOG_FUNCTION (this);
@@ -222,20 +220,6 @@ NistLteUeNetDevice::SetCsgId (uint32_t csgId)
   UpdateConfig (); // propagate the change down to NAS and RRC
 }
 
-void
-NistLteUeNetDevice::SetTargetEnb (Ptr<NistLteEnbNetDevice> enb)
-{
-  NS_LOG_FUNCTION (this << enb);
-  m_targetEnb = enb;
-}
-
-
-Ptr<NistLteEnbNetDevice>
-NistLteUeNetDevice::GetTargetEnb (void)
-{
-  NS_LOG_FUNCTION (this);
-  return m_targetEnb;
-}
 
 void 
 NistLteUeNetDevice::DoInitialize (void)

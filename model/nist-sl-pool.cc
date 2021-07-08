@@ -306,7 +306,7 @@ namespace ns3 {
   }
 
 std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>
-  SidelinkCommResourcePool::GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint32_t subframeInitialTx, uint8_t SFGap)
+  SidelinkCommResourcePool::GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint16_t nbRbPscch, uint32_t subframeInitialTx, uint8_t SFGap)
 {
   //NS_ASSERT_MSG (n < m_nPscchResources, "Requesting resource " << n << " but max is " << m_nPscchResources);
 
@@ -320,12 +320,13 @@ std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>
     //Ptr<UniformRandomVariable> uniformRnd = CreateObject<UniformRandomVariable> ();
 
     //uint32_t subframe = subframeNo + (uniformRnd -> GetInteger (0,100)); //fake random selection!
-uint32_t subframe = subframeNo + subframeInitialTx;
+    uint32_t subframe = subframeNo + subframeInitialTx;
     first.subframe.frameNo = (frameNo+subframe / 10) % 1024; //ok
     first.subframe.subframeNo = subframe % 10;
     first.rbStartPscch = rbStartPscch;
     first.rbStartPssch = rbStartPssch;
     first.nbRbPssch = nbRbPssch;
+    first.nbRbPscch = nbRbPscch;
     first.isThisAReTx = false;
 
     trans.push_back (first);
@@ -342,18 +343,18 @@ uint32_t subframe = subframeNo + subframeInitialTx;
 
       trans.push_back (second);
     }
-/*   
-std::ofstream allocationFile;
-allocationFile.open("results/sidelink/allocationFilePHY.txt", std::ios_base::app);
-allocationFile << "Frame: " << frameNo << ", Subframe: " << subframeNo << ", allocated Frame: " << trans.front().subframe.frameNo << ", allocated Subframe: " << trans.front().subframe.subframeNo << ", RbStart SCI: "<< (int) trans.front().rbStartPscch << ", RbStart DATA: "<< (int) trans.front().rbStartPssch <<"\r\n";
-allocationFile.close();
-*/
-    
+
+    /*std::ofstream allocationFile;
+    allocationFile.open("results/sidelink/allocationFilePHY.txt", std::ios_base::app);
+    allocationFile << "Frame: " << frameNo << ", Subframe: " << subframeNo << ", allocated Frame: " << trans.front().subframe.frameNo << ", allocated Subframe: " << trans.front().subframe.subframeNo << ", RbStart SCI: "<< (int) trans.front().rbStartPscch << ", RbStart DATA: "<< (int) trans.front().rbStartPssch <<"\r\n";
+    allocationFile.close();
+    */
+
     return trans;
 }
 
 std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>
-  SidelinkCommResourcePool::GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint32_t frameNoNextTx, uint32_t subframeNoNextTx, uint8_t SFGap)
+  SidelinkCommResourcePool::GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint16_t nbRbPscch, uint32_t frameNoNextTx, uint32_t subframeNoNextTx, uint8_t SFGap)
 {
   //NS_ASSERT_MSG (n < m_nPscchResources, "Requesting resource " << n << " but max is " << m_nPscchResources);
 
@@ -375,6 +376,7 @@ std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>
     first.rbStartPscch = rbStartPscch;
     first.rbStartPssch = rbStartPssch;
     first.nbRbPssch = nbRbPssch;
+    first.nbRbPscch = nbRbPscch;
     first.isThisAReTx = false;
 
     trans.push_back (first);
@@ -392,14 +394,13 @@ std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>
       trans.push_back (second);
     }
    
-/*
-std::ofstream allocationFile;
-allocationFile.open("results/sidelink/allocationFile.txt", std::ios_base::app);
-allocationFile << "Frame: " << frameNo << ", Subframe: " << subframeNo << ", allocated Frame: " << trans.front().subframe.frameNo << ", allocated Subframe: " << trans.front().subframe.subframeNo << ", RbStart SCI: "<< (int) trans.front().rbStartPscch << ", RbStart DATA: "<< (int) trans.front().rbStartPssch <<"\r\n";
-allocationFile.close();
-*/
+    /*std::ofstream allocationFile;
+    allocationFile.open("results/sidelink/allocationFilePHY.txt", std::ios_base::app);
+    allocationFile << "Frame: " << frameNo << ", Subframe: " << subframeNo << ", allocated Frame: " << trans.front().subframe.frameNo << ", allocated Subframe: " << trans.front().subframe.subframeNo << ", RbStart SCI: "<< (int) trans.front().rbStartPscch << ", RbStart DATA: "<< (int) trans.front().rbStartPssch <<"\r\n";
+    allocationFile.close();
+    */
+
  
-    
     return trans;
 }
 

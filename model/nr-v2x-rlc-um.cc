@@ -27,12 +27,13 @@
 #include "ns3/nr-v2x-rlc-um.h"
 #include "ns3/nist-lte-rlc-sdu-status-tag.h"
 #include "ns3/nist-lte-rlc-tag.h"
+#include <ns3/string.h>
 
 #include <iostream>
 #include <fstream>
 #include <inttypes.h>
 
-#include "ns3/v2x-lte-tag.h"
+#include "ns3/nr-v2x-tag.h"
 
 namespace ns3 {
 
@@ -70,6 +71,11 @@ NistLteRlcUm::GetTypeId (void)
                    UintegerValue (10 * 1024),
                    MakeUintegerAccessor (&NistLteRlcUm::m_maxTxBufferSize),
                    MakeUintegerChecker<uint32_t> ())
+    .AddAttribute ("OutputPath",
+                   "Specifiy the output path where to store the results",
+                   StringValue ("results/sidelink/"),
+                   MakeStringAccessor (&NistLteRlcUm::m_outputPath),
+                   MakeStringChecker ())
     ;
   return tid;
 }
@@ -396,15 +402,15 @@ NistLteRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harq
   params.harqProcessId = harqId;
   
   //TODO FIXME NEW for V2X
-  V2xLteTag v2xLteTag;
-  if (packet -> FindFirstMatchingByteTag (v2xLteTag))
+  NrV2XTag v2xTag;
+  if (packet -> FindFirstMatchingByteTag (v2xTag))
     {
-      std::ofstream tagFile;
-      tagFile.open ("results/sidelink/v2xTag.txt", std::ios_base::app);
-      tagFile << v2xLteTag.GetGenTime () << ", message type: " << (int) v2xLteTag.GetMessageType () << ", from RLC \r\n";
-      tagFile.close ();
+   /*   std::ofstream tagFile;
+      tagFile.open (m_outputPath + "v2xTag.txt", std::ios_base::app);
+      tagFile << v2xTag.GetGenTime () << ", message type: " << (int) v2xTag.GetMessageType () << ", from RLC \r\n";
+      tagFile.close ();*/
       
-      params.V2XMessageType = v2xLteTag.GetMessageType ();
+      params.V2XMessageType = v2xTag.GetMessageType ();
     }
   
   m_macSapProvider->TransmitPdu (params);
@@ -437,7 +443,7 @@ NistLteRlcUm::DoReceivePdu (Ptr<Packet> p)
   m_rxPdu (m_rnti, m_lcid, p->GetSize (), delay.GetNanoSeconds ());
 
   /*std::ofstream delayRLC;
-  delayRLC.open("results/sidelink/delayRLC.csv", std::ios_base::app);
+  delayRLC.open(m_outputPath + "delayRLC.csv", std::ios_base::app);
   delayRLC << delay.GetSeconds () << " s , Now: " << Simulator::Now ().GetSeconds () << " s" << "\r\n";
   delayRLC.close (); */
 
@@ -486,7 +492,7 @@ NistLteRlcUm::DoReceivePdu (Ptr<Packet> p)
 
     /*
       std::ofstream RxRlcUmFile;
-      RxRlcUmFile.open ("results/sidelink/RxRlcUmFileDiscard.csv", std::ios_base::app);
+      RxRlcUmFile.open (m_outputPath + "RxRlcUmFileDiscard.csv", std::ios_base::app);
       RxRlcUmFile << m_rnti << "," << Simulator::Now ().GetSeconds () << "," << seqNumber << "\r\n";
       RxRlcUmFile.close ();
    */
@@ -501,7 +507,7 @@ NistLteRlcUm::DoReceivePdu (Ptr<Packet> p)
      
 /*
       std::ofstream RxRlcUmFile;
-      RxRlcUmFile.open ("results/sidelink/RxRlcUmFile.csv", std::ios_base::app);
+      RxRlcUmFile.open (m_outputPath + "RxRlcUmFile.csv", std::ios_base::app);
       RxRlcUmFile << Simulator::Now ().GetSeconds () << "\r\n";
       RxRlcUmFile.close ();
 */
@@ -1197,19 +1203,21 @@ NistLteRlcUm::DoReportBufferNistStatus (void)
 
       queueSize = m_txBufferSize + 2 * m_txBuffer.size (); // Data in tx queue + estimated headers size
         
-      V2xLteTag v2xLteTag;
-      if (m_txBuffer.front () -> FindFirstMatchingByteTag (v2xLteTag))
+      NrV2XTag v2xTag;
+      if (m_txBuffer.front () -> FindFirstMatchingByteTag (v2xTag))
         {
-            r.V2XMessageType = v2xLteTag.GetMessageType ();
-            r.V2XTrafficType = v2xLteTag.GetTrafficType ();
-            r.V2XPPPP = v2xLteTag.GetPPPP ();
-            r.V2XPdb = v2xLteTag.GetPdb ();
-            r.V2XPrsvp = v2xLteTag.GetPrsvp ();
-            r.V2XReselectionCounter = v2xLteTag.GetReselectionCounter();
-            r.V2XPacketSize = v2xLteTag.GetPacketSize();
-            r.V2XReservationSize = v2xLteTag.GetReservationSize();
-            r.V2XNodeId = v2xLteTag.GetNodeId ();
+            r.V2XMessageType = v2xTag.GetMessageType ();
+            r.V2XTrafficType = v2xTag.GetTrafficType ();
+            r.V2XPPPP = v2xTag.GetPPPP ();
+            r.V2XPdb = v2xTag.GetPdb ();
+            r.V2XPrsvp = v2xTag.GetPrsvp ();
+            r.V2XReselectionCounter = v2xTag.GetReselectionCounter();
+            r.V2XPacketSize = v2xTag.GetPacketSize();
+            r.V2XReservationSize = v2xTag.GetReservationSize();
+            r.V2XNodeId = v2xTag.GetNodeId ();
             r.isNewV2X = true;
+            r.V2XGenTime = v2xTag.GetGenTime();
+            r.V2XPacketID = v2xTag.GetPacketId();
         }
     }
 
@@ -1234,7 +1242,7 @@ NistLteRlcUm::DoReportBufferNistStatus (void)
   /*if (Simulator::Now ().GetSeconds() == 0.298701)
     {
       std::ofstream alert;
-      alert.open("results/sidelink/RLCAlert.txt", std::ios_base::app);
+      alert.open(m_outputPath + "RLCAlert.txt", std::ios_base::app);
       alert << "Send ReportBufferNistStatus = " << r.txQueueSize << ", " << r.txQueueHolDelay << "\r\n";
       alert.close();
     }*/

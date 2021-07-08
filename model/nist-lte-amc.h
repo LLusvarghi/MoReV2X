@@ -66,7 +66,7 @@ public:
        */
       MiErrorModel,
       /**
-       * An AMC model based on 10% of BER according to NistLtePhyErrorModel
+       * An AMC model based on 10% of BER according to NrV2XPhyErrorModel
        */
       NistErrorModel
     };

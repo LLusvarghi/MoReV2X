@@ -33,7 +33,7 @@ namespace ns3 {
 /**
  * \brief This class realizes Uplink Power Control functionality
  *
- * When NistLteUePhy is about sending PUSCH/PUCCH/SRS it should ask
+ * When NrV2XUePhy is about sending PUSCH/PUCCH/SRS it should ask
  * NistLteUePowerControl for current channel TX power level and then
  * use it while creating SpectrumValue for Uplink Transmission
  *
@@ -44,10 +44,10 @@ namespace ns3 {
  * NistLteUePowerControlcomputes TX power based on some preconfigured
  * parameters and current Path-loss. Path-loss is computed as difference
  * between current RSRP and referenceSignalPower level. Current RSRP
- * is passed to NistLteUePowerControl by NistLteUePhy. referenceSignalPower is
+ * is passed to NistLteUePowerControl by NrV2XUePhy. referenceSignalPower is
  * configurable by attribute system
  *
- * Moreover, NistLteUePhy pass all received TPC values to NistLteUePowerControl,
+ * Moreover, NrV2XUePhy pass all received TPC values to NistLteUePowerControl,
  * what is a part of Closed Loop Power Control functionality
  */
 

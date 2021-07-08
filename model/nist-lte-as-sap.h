@@ -28,7 +28,6 @@
 
 namespace ns3 {
 
-class NistLteEnbNetDevice;
 
 /**
  * This class implements the Access Stratum (AS) Service Access Point

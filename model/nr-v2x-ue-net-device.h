@@ -37,9 +37,8 @@ class Packet;
 class PacketBurst;
 class Node;
 class NistLtePhy;
-class NistLteUePhy;
-class NistLteEnbNetDevice;
-class NistLteUeMac;
+class NrV2XUePhy;
+class NrV2XUeMac;
 class NistLteUeRrc;
 class NistEpcUeNas;
 class NistEpcTft;
@@ -63,11 +62,11 @@ public:
   virtual bool Send (Ptr<Packet> packet, const Address& dest, uint16_t protocolNumber);
 
 
-  Ptr<NistLteUeMac> GetMac (void) const;
+  Ptr<NrV2XUeMac> GetMac (void) const;
 
   Ptr<NistLteUeRrc> GetRrc () const;
 
-  Ptr<NistLteUePhy> GetPhy (void) const;
+  Ptr<NrV2XUePhy> GetPhy (void) const;
 
   Ptr<NistEpcUeNas> GetNas (void) const;
 
@@ -108,18 +107,6 @@ public:
    */
   void SetCsgId (uint32_t csgId);
 
-  /**
-   * \brief Set the targer eNB where the UE is registered
-   * \param enb
-   */
-  void SetTargetEnb (Ptr<NistLteEnbNetDevice> enb);
-
-  /**
-   * \brief Get the targer eNB where the UE is registered
-   * \return the pointer to the enb
-   */
-  Ptr<NistLteEnbNetDevice> GetTargetEnb (void);
-
 
 protected:
   // inherited from Object
@@ -140,10 +127,8 @@ private:
    */
   void UpdateConfig ();
 
-  Ptr<NistLteEnbNetDevice> m_targetEnb;
-
-  Ptr<NistLteUeMac> m_mac;
-  Ptr<NistLteUePhy> m_phy;
+  Ptr<NrV2XUeMac> m_mac;
+  Ptr<NrV2XUePhy> m_phy;
   Ptr<NistLteUeRrc> m_rrc;
   Ptr<NistEpcUeNas> m_nas;
 

@@ -31,7 +31,7 @@ namespace ns3 {
 
 class Tag;
 
-class NrV2xTag : public Tag
+class NrV2XTag : public Tag
 {
 public:
   static TypeId GetTypeId (void);
@@ -62,7 +62,7 @@ public:
   void SetReservationSize(uint16_t value);
 
   void SetPPPP (uint8_t value);
-  void SetPdb (uint32_t value);
+  void SetPdb (double value);
   void SetPrsvp (uint32_t value);
   void SetMcs (uint32_t value);
 
@@ -85,7 +85,7 @@ public:
   uint16_t GetReservationSize(void) const;
   
   uint8_t GetPPPP (void) const;
-  uint32_t GetPdb (void) const;
+  double GetPdb (void) const;
   uint32_t GetPrsvp (void) const;
   uint32_t GetMcs (void) const;
   
@@ -115,7 +115,7 @@ private:
   uint16_t m_ReservationSize; 
 
   uint8_t m_pppp; // the ProSe Per-Packet Priority
-  uint32_t m_pdb; // the Packet Delay Budget (over the single hop)
+  double m_pdb; // the Packet Delay Budget (over the single hop)
   uint32_t m_p_rsvp; // the reservation period for this packet
   uint32_t m_mcs; // the Modulation and Coding Scheme to be used by lower layers for transmission
 };

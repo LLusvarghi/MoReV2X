@@ -22,8 +22,7 @@
 #define NIST_LTE_PROSE_HELPER_H
 
 #include <ns3/nist-lte-helper.h>
-#include <ns3/nist-lte-ue-net-device.h>
-#include <ns3/nist-lte-hex-grid-enb-topology-helper.h>
+#include <ns3/nr-v2x-ue-net-device.h>
 #include <ns3/output-stream-wrapper.h>
 
 namespace ns3 {
@@ -115,20 +114,6 @@ public:
  * \return List of groups, with first NetDevice in the container being the transmitter
  */
 std::vector < NetDeviceContainer > AssociateForBroadcastWithTxEnabledToReceive (double txPower, double ulEarfcn, double ulBandwidth, NetDeviceContainer ues, double rsrpThreshold, uint32_t ntransmitters, SrsrpMethod_t compMethod);
-
- /**
-   * Associate UEs for broadcast communication
-   * \param txPower The transmit power used by the UEs
-   * \param ulEarfcn The uplink frequency band
-   * \param ulBandwidth The uplink bandwidth
-   * \param ues The list of UEs deployed
-   * \param rsrpThreshold minimum RSRP to connect a transmitter and receiver
-   * \param ntransmitters Number of groups to create
-   * \param topologyHelper Pointer to the topology helper
-   * \param compMethod The method to compute the SRSRP value
-   * \return List of groups, with first NetDevice in the container being the transmitter
-   */
-  std::vector < NetDeviceContainer > AssociateForBroadcastWithWrapAround (double txPower, double ulEarfcn, double ulBandwidth, NetDeviceContainer ues, double rsrpThreshold, uint32_t ntransmitters, Ptr<NistLteHexGridEnbTopologyHelper> topologyHelper, SrsrpMethod_t compMethod = NistLteProseHelper::SRSRP_STD);
 
   /**
    * Prints the groups starting by the transmitter

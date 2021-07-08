@@ -119,9 +119,10 @@ namespace ns3 {
   /** Indicates the location of a transmission on the V2X sidelink in time and frequency **/
     struct V2XSidelinkTransmissionInfo {
       SubframeInfo subframe; //!<The time of the transmission
-      uint8_t rbStartPssch; //!<The index of the PRB where the transmission starts
-      uint8_t nbRbPssch; //!<The number of PRBs used by the PSSCH transmission
-      uint8_t rbStartPscch; //!<The index of the PRB where the PSCCH transmission starts
+      uint16_t rbStartPssch; //!<The index of the PRB where the transmission starts
+      uint16_t nbRbPssch; //!<The number of PRBs used by the PSSCH transmission
+      uint16_t rbStartPscch; //!<The index of the PRB where the PSCCH transmission starts
+      uint16_t nbRbPscch; //!<The number of PRBs used by the PSCCH transmission
       /* The number of PRBs used by the PSCCH transmission in one slot is always 2 */
       bool isThisAReTx; //!<Indicates whether this transmission refers to the retransmission
 
@@ -181,10 +182,9 @@ namespace ns3 {
      */
     SubframeInfo GetNextScPeriod (uint32_t frameNo, uint32_t subframeNo);
 
-  std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo> GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint32_t subframeInitialTx, uint8_t SFGap);
+    std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo> GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint16_t nbRbPscch, uint32_t subframeInitialTx, uint8_t SFGap);
 
-std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>
-  GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint32_t frameNoNextTx, uint32_t subframeNoNextTx, uint8_t SFGap);
+    std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo> GetV2XSlTransmissions (uint32_t frameNo, uint32_t subframeNo, uint16_t rbStartPscch, uint16_t rbStartPssch, uint16_t nbRbPssch, uint16_t nbRbPscch, uint32_t frameNoNextTx, uint32_t subframeNoNextTx, uint8_t SFGap);
 
     /**
      * Returns the subframe and resource block allocations of the transmissions in 
