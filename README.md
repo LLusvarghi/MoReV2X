@@ -6,7 +6,7 @@ The MoReV2X module is backward compatible and implements LTE-V2X Mode 4.
 
 Should you need any information about the code and how to run it please feel free to contact: (luca.lusvarghi5@unimore.it)
 
-As of today, MoReV2X has been tested with . Its upgrade to the latest version of ns-3 is currently underway, stay tuned!
+As of today, MoReV2X has been tested with ns-3.22. Its upgrade to the latest version of ns-3 is currently underway, stay tuned!
 
 # Getting Started
 After installing [ns-3.22](https://www.nsnam.org/releases/ns-3-22/), you just need to clone this repository inside the `src` ns-3 folder in order to use MoReV2X.
