@@ -10,7 +10,8 @@ As of today, MoReV2X has been tested with ns-3.22. Its upgrade to the latest ver
 
 # Getting Started
 After installing [ns-3.22](https://www.nsnam.org/releases/ns-3-22/), you just need to clone this repository inside the `src` ns-3 folder in order to use MoReV2X.
-`git clone `
+
+`git clone https://github.com/LLusvarghi/MoReV2X.git `
 
 ## Building with waf
 Before running one of the scripts from the `examples` folder, configure the build with the following command:
