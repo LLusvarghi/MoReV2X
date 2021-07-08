@@ -12,7 +12,7 @@ As of today, MoReV2X has been tested with . Its upgrade to the latest version of
 After installing [ns-3.22](https://www.nsnam.org/releases/ns-3-22/), you just need to clone this repository inside the `src` ns-3 folder in order to use MoReV2X.
 `git clone `
 
-## Builiding with waf
+## Building with waf
 Before running one of the scripts from the `examples` folder, configure the build with the following command:
 `CXXFLAGS="-Wall -g -O0" ./waf configure --disable-python --enable-examples --disable-tests --build-profile=optimized`
 
@@ -20,7 +20,7 @@ and then build the optimized ns-3 programs typing
 `./waf`
 
 # About
-Hats off to the people who contributed to this project: 
+List of people who contributed to this project: 
 * Luca Lusvarghi (luca.lusvarghi5@unimore.it)  
 * Lorenzo Gibellini 
 * Maria Luisa Merani
