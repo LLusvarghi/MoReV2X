@@ -6,6 +6,7 @@ The MoReV2X module is backward compatible and implements LTE-V2X Mode 4.
 If you use the MoReV2X module in your research, please cite [this work](https://ieeexplore.ieee.org/document/9625478).  
 
 Should you need any information about the code and how to run it please feel free to contact: luca.lusvarghi5@unimore.it  
+
 As of today, MoReV2X has been tested with ns-3.33. Its upgrade to the latest version of ns-3 is currently underway, stay tuned!
 
 # Getting Started
@@ -16,7 +17,7 @@ After installing [ns-3.33](https://www.nsnam.org/releases/ns-3-33/), you just ne
 Before running one of the scripts from the `examples` folder, configure the build with the following command:   
 `CXXFLAGS="-Wall -g -O0" ./waf configure --disable-python --enable-examples --disable-tests --build-profile=debug`
 
-and then build the optimized ns-3 programs typing   
+and then build ns-3 typing   
 `./waf`
 
 # About
