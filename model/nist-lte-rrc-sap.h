@@ -88,7 +88,7 @@ public:
   struct NistFreqInfo
   {
     uint16_t ulCarrierFreq;
-    uint8_t ulBandwidth;
+    uint16_t ulBandwidth;
   };
 
   struct NistRlcConfig
@@ -485,8 +485,8 @@ public:
 
   struct NistCarrierBandwidthEutra
   {
-    uint8_t dlBandwidth;
-    uint8_t ulBandwidth;
+    uint16_t dlBandwidth;
+    uint16_t ulBandwidth;
   };
 
   struct NistRachConfigDedicated
@@ -819,7 +819,7 @@ public:
 
   struct SlPreconfigGeneral {
     uint16_t carrierFreq; //ulEarfcn
-    uint8_t slBandwidth;  //nb RBs
+    uint16_t slBandwidth;  //nb RBs
   };
   
   /*

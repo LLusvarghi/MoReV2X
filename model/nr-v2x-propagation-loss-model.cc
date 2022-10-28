@@ -196,6 +196,7 @@ NrV2XPropagationLossModel::InitChannelMatrix (NodeContainer VehicleUEs)
       {      
         Ptr<MobilityModel> mobRX = RxNode->GetObject<MobilityModel> ();
         double TxRxDistance = mobTX->GetDistanceFrom(mobRX);
+//        NS_LOG_INFO("Tx ID " << txID << ", Rx ID " << rxID << ", Tx-Rx distance " << TxRxDistance << ", " << mobTX->GetPosition().x << ", " << mobRX->GetPosition().x);
         NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Distance = TxRxDistance;
         NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Pathloss = 32.4 + 20 * std::log10(TxRxDistance) + 20 * std::log10(m_frequency); 
         shadowingValue = m_shadowing->GetValue (0.0, (m_sigma*m_sigma));
@@ -208,6 +209,7 @@ NrV2XPropagationLossModel::InitChannelMatrix (NodeContainer VehicleUEs)
         {
           Plos = std::max(0.0,0.54 - 0.001*(TxRxDistance-475));
         }
+//        Plos = 0;         //TODO COMMENT
         LOS = m_randomUniform->GetValue () > Plos ? false : true;
         NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].LOS = LOS;
         if (LOS)
@@ -217,7 +219,9 @@ NrV2XPropagationLossModel::InitChannelMatrix (NodeContainer VehicleUEs)
         }
         else
         {
-          shadowingNLOSv = m_shadowingNLOSv->GetValue (5 + std::max(0.0,(15*std::log10(TxRxDistance))-41), (m_sigmaNLOSv*m_sigmaNLOSv));// Due to the presence of other vehicles
+          Ptr<NormalRandomVariable> RandomShadowingNLOSv =  CreateObject<NormalRandomVariable> ();
+          shadowingNLOSv = RandomShadowingNLOSv->GetValue (5 + std::max(0.0,(15*std::log10(TxRxDistance))-41), (m_sigmaNLOSv*m_sigmaNLOSv));// Due to the presence of other vehicles
+//          shadowingNLOSv = m_shadowingNLOSv->GetValue (5 + std::max(0.0,(15*std::log10(TxRxDistance))-41), (m_sigmaNLOSv*m_sigmaNLOSv));// Due to the presence of other vehicles
           shadowingNLOSv = std::max(0.0,shadowingNLOSv);
           NS_LOG_INFO("NLOSv link. Additional shadowing = " << shadowingNLOSv << " dB");
           NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].ShadowingNLOSv = shadowingNLOSv;
@@ -234,13 +238,13 @@ NrV2XPropagationLossModel::InitChannelMatrix (NodeContainer VehicleUEs)
         NrV2XPropagationLossModel::ChannelMatrix[II->first][IIinner->first] = NrV2XPropagationLossModel::ChannelMatrix[IIinner->first][II->first];
   NS_LOG_INFO("Done.");
 
-  /*NS_LOG_INFO("Printing channel models matrix");
+  NS_LOG_INFO("Printing channel models matrix");
   //Print matrix
   for (std::map<uint32_t, std::map<uint32_t , ChannelModel> >::iterator II = NrV2XPropagationLossModel::ChannelMatrix.begin(); II != NrV2XPropagationLossModel::ChannelMatrix.end(); ++II)
     for (std::map<uint32_t , ChannelModel>::iterator IIinner = II->second.begin(); IIinner != II->second.end(); ++IIinner)
       NS_LOG_INFO("(" << II->first << "," << IIinner->first << "): distance = " << IIinner->second.Distance << " m, pathloss = " << IIinner->second.Pathloss << " dB, shadowing = " << IIinner->second.Shadowing << " dB, shadowing NLOSv = " << IIinner->second.ShadowingNLOSv << " dB, LOS = " << IIinner->second.LOS);
-  */    
-
+  
+//  std::cin.get();    
   Simulator::Schedule (MilliSeconds (100), &NrV2XPropagationLossModel::UpdateChannelMatrix, this);      
 }
 
@@ -273,7 +277,8 @@ NrV2XPropagationLossModel::UpdateChannelMatrix (void)
   //     NS_LOG_INFO("Update distance for Tx " << txID << " and Rx " << rxID << " is " << UpdateDistance << " m");
         shadowingValue = m_shadowing->GetValue (0.0, (m_sigma*m_sigma));
         NS_LOG_INFO("Tx Node " << txID << " Rx Node " << rxID << " Update distance " << UpdateDistance << " Previous shadowing value " << NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Shadowing << " current shadowing value " << shadowingValue);
-        shadowingValue = exp(-UpdateDistance/m_decorrDistance)*NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Shadowing + sqrt( 1-exp(-2*UpdateDistance/m_decorrDistance) )*shadowingValue;
+        //TODO UNCOMMENT
+        shadowingValue = exp(-UpdateDistance/m_decorrDistance)*NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Shadowing + sqrt( 1-exp(-2*UpdateDistance/m_decorrDistance) )*shadowingValue; 
         NS_LOG_INFO("Shadowing value after decorrelation " << shadowingValue);
         NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Distance = TxRxDistance;
         NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].Pathloss = 32.4 + 20 * std::log10(TxRxDistance) + 20 * std::log10(m_frequency); 
@@ -286,6 +291,7 @@ NrV2XPropagationLossModel::UpdateChannelMatrix (void)
         {
           Plos = std::max(0.0,0.54 - 0.001*(TxRxDistance-475));
         }
+//        Plos = 0;         //TODO COMMENT
         LOS = m_randomUniform->GetValue () > Plos ? false : true;
         NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].LOS = LOS;
         if (LOS)
@@ -295,7 +301,9 @@ NrV2XPropagationLossModel::UpdateChannelMatrix (void)
         }
         else
         {
-          shadowingNLOSv = m_shadowingNLOSv->GetValue (5 + std::max(0.0,(15*std::log10(TxRxDistance))-41), (m_sigmaNLOSv*m_sigmaNLOSv));// Due to the presence of other vehicles
+          Ptr<NormalRandomVariable> RandomShadowingNLOSv =  CreateObject<NormalRandomVariable> ();
+          shadowingNLOSv = RandomShadowingNLOSv->GetValue (5 + std::max(0.0,(15*std::log10(TxRxDistance))-41), (m_sigmaNLOSv*m_sigmaNLOSv));// Due to the presence of other vehicles
+//          shadowingNLOSv = m_shadowingNLOSv->GetValue (5 + std::max(0.0,(15*std::log10(TxRxDistance))-41), (m_sigmaNLOSv*m_sigmaNLOSv));// Due to the presence of other vehicles
           shadowingNLOSv = std::max(0.0,shadowingNLOSv);
           NS_LOG_INFO("NLOSv link. Additional shadowing = " << shadowingNLOSv << " dB");
           NrV2XPropagationLossModel::ChannelMatrix[txID][rxID].ShadowingNLOSv = shadowingNLOSv;
@@ -312,13 +320,13 @@ NrV2XPropagationLossModel::UpdateChannelMatrix (void)
         NrV2XPropagationLossModel::ChannelMatrix[II->first][IIinner->first] = NrV2XPropagationLossModel::ChannelMatrix[IIinner->first][II->first];       
   NS_LOG_INFO("Done.");
 
-/*  NS_LOG_INFO("Printing channel models matrix");
+  NS_LOG_INFO("Printing channel models matrix");
   //Print matrix
   for (std::map<uint32_t, std::map<uint32_t , ChannelModel> >::iterator II = NrV2XPropagationLossModel::ChannelMatrix.begin(); II != NrV2XPropagationLossModel::ChannelMatrix.end(); ++II)
     for (std::map<uint32_t , ChannelModel>::iterator IIinner = II->second.begin(); IIinner != II->second.end(); ++IIinner)
       NS_LOG_INFO("(" << II->first << "," << IIinner->first << "): distance = " << IIinner->second.Distance << " m, pathloss = " << IIinner->second.Pathloss << " dB, shadowing = " << IIinner->second.Shadowing << " dB, shadowing NLOSv = " << IIinner->second.ShadowingNLOSv << " dB, LOS = " << IIinner->second.LOS);
-*/
 
+//  std::cin.get();
   Simulator::Schedule (MilliSeconds (100), &NrV2XPropagationLossModel::UpdateChannelMatrix, this);      
 }
 

@@ -720,11 +720,18 @@ private:
   struct PacketStatus
   {
     double rxTime;
-    double TxDistance;
-    uint32_t txID;
+    double latency;
     uint32_t rxID;
+
+    double TxDistance;
+
+    uint32_t txID;
     uint32_t packetID;
-    bool decodingStatus;
+    uint16_t txIndex; // 1 for inital transmission. Larger than 1 for re-transmissions
+    uint16_t selectionTrigger;
+
+    bool announced;
+    bool decoded;
     uint16_t lossType;
   };
 

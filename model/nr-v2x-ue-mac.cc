@@ -28,7 +28,7 @@
 #include <ns3/packet.h>
 #include <ns3/packet-burst.h>
 #include <ns3/random-variable-stream.h>
-
+#include "nist-lte-net-device.h"
 #include "nr-v2x-ue-mac.h"
 #include "nr-v2x-ue-net-device.h"
 #include "nist-lte-radio-bearer-tag.h"
@@ -47,6 +47,8 @@
 #include <fstream>
 
 #include "nr-v2x-utils.h"
+
+#include <ns3/node-container.h>
 
 namespace ns3 {
 
@@ -269,7 +271,7 @@ public:
 	virtual void NotifyChangeOfTiming (uint32_t frameNo, uint32_t subframeNo);
 
         virtual void ReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb);
-        virtual void ReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI);
+        virtual void ReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, double RRI, bool isReTx, bool isSameTB);
         virtual void StoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint16_t rbStart, uint16_t rbLen);
 
 private:
@@ -315,9 +317,9 @@ NistUeMemberLteUePhySapUser::ReportPsschRsrp (Time time, uint16_t rbStart, uint1
 }
 
 void
-NistUeMemberLteUePhySapUser::ReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI)
+NistUeMemberLteUePhySapUser::ReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, double RRI, bool isReTx,  bool isSameTB)
 {
-	m_mac->DoReportPsschRsrpReservation (time, rbStart, rbLen, rsrpDb, receivedSubframe, reservedSubframe, CreselRx, nodeId, RRI);
+	m_mac->DoReportPsschRsrpReservation (time, rbStart, rbLen, rsrpDb, receivedSubframe, reservedSubframe, CreselRx, nodeId, RRI, isReTx, isSameTB);
 }
 
 void
@@ -341,6 +343,11 @@ double NrV2XUeMac::prevPrintTime_reEvaluation = 0.0;
 
 std::vector<NrV2XUeMac::TxPacketInfo> NrV2XUeMac::TxPacketsStats;
 double NrV2XUeMac::prevPrintTime_packetInfo = 0.0;
+
+std::map<uint32_t, NrV2XUeMac::ReservationsInfo> NrV2XUeMac::ReservationsStats;
+double NrV2XUeMac::prevPrintTime_reservations = 0.0;
+
+
 
 TypeId
 NrV2XUeMac::GetTypeId (void)
@@ -377,20 +384,30 @@ NrV2XUeMac::GetTypeId (void)
                                         BooleanValue (false),
                                         MakeBooleanAccessor (&NrV2XUeMac::m_useRxCresel),
                                         MakeBooleanChecker ())
-                .AddAttribute ("AggressiveMode4",
-                                        "Use Aggressive Mode 4 strategy when PDB is violated",
+                .AddAttribute ("DynamicScheduling",
+                                        "Enable Mode 2 Dynamic Scheduling",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2XUeMac::m_aggressive),
+                                        MakeBooleanAccessor (&NrV2XUeMac::m_dynamicScheduling),
+                                        MakeBooleanChecker ())
+                .AddAttribute ("MixedTraffic",
+                                        "Mixed traffic scheduling",
+                                        BooleanValue (false),
+                                        MakeBooleanAccessor (&NrV2XUeMac::m_mixedTraffic),
                                         MakeBooleanChecker ())
                 .AddAttribute ("OneShot",
                                         "Use one-shot transmission when a reselection is triggered",
                                         BooleanValue (false),
                                         MakeBooleanAccessor (&NrV2XUeMac::m_oneShot),
                                         MakeBooleanChecker ())
-                .AddAttribute ("SubmissiveMode4",
-                                        "Use Submissive Mode 4 strategy when PDB is violated",
+		.AddAttribute ("RSRPthreshold",
+					"The RSRP threshold used for excluding reserved resources",
+					DoubleValue (-128.0),
+					MakeDoubleAccessor (&NrV2XUeMac::m_rsrpThreshold),
+					MakeDoubleChecker<double> ())
+                .AddAttribute ("EnableReTx",
+                                        "Enable Re-transmissions",
                                         BooleanValue (false),
-                                        MakeBooleanAccessor (&NrV2XUeMac::m_submissive),
+                                        MakeBooleanAccessor (&NrV2XUeMac::m_EnableReTx),
                                         MakeBooleanChecker ())
 		.AddAttribute ("SubchannelSize",
 					"The Subchannel size (in RBs)",
@@ -422,6 +439,21 @@ NrV2XUeMac::GetTypeId (void)
                                         BooleanValue (false),
                                         MakeBooleanAccessor (&NrV2XUeMac::m_allSlotsReEvaluation),
                                         MakeBooleanChecker ())
+                .AddAttribute ("UMHReEvaluation",
+                                        "Re-evaluation check performed only on re-transmissions",
+                                        BooleanValue (false),
+                                        MakeBooleanAccessor (&NrV2XUeMac::m_UMHvariant),
+                                        MakeBooleanChecker ())
+                .AddAttribute ("FrequencyReuse",
+                                        "Enable frequency-reuse scheduling",
+                                        BooleanValue (false),
+                                        MakeBooleanAccessor (&NrV2XUeMac::m_FreqReuse),
+                                        MakeBooleanChecker ())
+                .AddAttribute ("AdaptiveScheduling",
+                                        "Mixed traffic simulations: enable adaptive scheduling (SPS periodic, DS aperiodic)",
+                                        BooleanValue (false),
+                                        MakeBooleanAccessor (&NrV2XUeMac::m_AdaptiveScheduling),
+                                        MakeBooleanChecker ())
                 .AddAttribute ("OutputPath",
                                         "Specifiy the output path where to store the results",
                                         StringValue ("results/sidelink/"),
@@ -432,7 +464,6 @@ NrV2XUeMac::GetTypeId (void)
                                         DoubleValue (1.0),
                                         MakeDoubleAccessor (&NrV2XUeMac::m_savingPeriod),
                                         MakeDoubleChecker<double> ())
-
 ;																									;
 	return tid;
 }
@@ -440,6 +471,9 @@ NrV2XUeMac::GetTypeId (void)
 
 NrV2XUeMac::NrV2XUeMac ()
 :  
+//   m_RRIvalues ({3, 11, 20, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000})
+//   m_RRIvalues ({20, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000})
+   m_RRIvalues ({}),
    m_cphySapProvider (0),
    m_bsrPeriodicity (MilliSeconds (1)), // ideal behavior
    m_bsrLast (MilliSeconds (0)),
@@ -457,25 +491,11 @@ NrV2XUeMac::NrV2XUeMac ()
 //   m_nsubCHsize (10),
    m_L_SubCh (1),
 //   m_BW_RBs (50),
-   m_UnutilizedReservations (0),
-   m_UnutilizedSubchannels (0), 
-   m_ReservedSubchannels (0),
-   m_Reservations (0),
-   m_LatencyReselections (0),
-   m_SizeReselections (0),
-   m_CounterReselections (0),
-   m_TotalTransmissions (0),
-   m_prevPrintTime (0.0),
-//   m_allSlotsReEvaluation (false),
+   m_maxPDB(110.0),
    m_keepProbability (0.0),
    m_sizeThreshold (0.2),
-   m_rsrpThreshold (-120),
    m_sensingWindow (1100),
-   m_oneShotGrant (false),
-//   m_slotDuration (1.0), // Expressed in ms
-//   m_RRIvalues ({3, 11, 20, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000})
-//   m_RRIvalues ({20, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000})
-   m_RRIvalues ({100})
+   m_oneShotGrant (false)
 {
    NS_LOG_FUNCTION (this);
    
@@ -483,6 +503,25 @@ NrV2XUeMac::NrV2XUeMac ()
    NS_ASSERT_MSG(m_keepProbability >= 0, "Keep probability must be non-negative");
 
    m_debugNode = 0;
+
+   ReservationsInfo initEntry;
+   initEntry.UnutilizedSubchannelsRatio = {};
+   initEntry.UnutilizedReservations = 0;
+   initEntry.Reservations = 0;
+   initEntry.LatencyReselections = 0;
+   initEntry.SizeReselections = 0;
+   initEntry.CounterReselections = 0;
+   initEntry.TotalTransmissions = 0;
+
+   NodeContainer GlobalContainer = NodeContainer::GetGlobal();
+   Ptr<Node> Node;
+   for (NodeContainer::Iterator L = GlobalContainer.Begin(); L != GlobalContainer.End(); ++L) 
+   {
+     Node = *L;
+     uint32_t nodeID = Node->GetId();
+     if (nodeID > 0)
+       NrV2XUeMac::ReservationsStats.insert(std::pair<uint32_t, ReservationsInfo> (nodeID, initEntry));
+   }  
 
    m_prevListUpdate.frameNo = 0;
    m_prevListUpdate.subframeNo = 0;
@@ -1085,101 +1124,132 @@ NrV2XUeMac::RefreshHarqProcessesPacketBuffer (void)
 }
 
 
-uint32_t 
-NrV2XUeMac::ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1)
+void
+NrV2XUeMac::CopySubchannelsMap (std::map < uint16_t, std::vector < std::pair <double, double>>> inputMap)
 {
-   
-   uint32_t nCSR = 0;
-   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator mapIt;
-   for (mapIt = L1.begin (); mapIt != L1.end (); mapIt++)
-      {
-          nCSR += (*mapIt).second.size ();
-      }  
-   return nCSR;
-}
+  NS_LOG_FUNCTION(this);
 
-bool
-NrV2XUeMac::CompareRssi (CandidateCSRl2 first, CandidateCSRl2 second)
-{
-  return (first.rssi < second.rssi);
+  m_subchannelsMap = inputMap;
+
+  NS_ASSERT_MSG(m_subchannelsMap.size() > 0, "Geo-based subchannels map is empty!");
 }
 
 
-uint16_t
-NrV2XUeMac::GetTproc0 (uint16_t numerologyIndex)
+void
+NrV2XUeMac::PushNewRRIValue (uint16_t RRI)
 {
-   uint16_t T_proc_0; //Defined in slots
-   switch (m_numerologyIndex)
+  NS_LOG_FUNCTION(this);
+
+  m_RRIvalues.push_back(RRI);
+
+  NS_ASSERT_MSG(m_RRIvalues.size() < 16, "Maximum size of the RRI list is 16");
+
+ /* NS_LOG_INFO("Printing RRI values");
+  for (std::vector<uint16_t>::iterator RRIit = m_RRIvalues.begin(); RRIit != m_RRIvalues.end(); RRIit++)
+    NS_LOG_INFO("Adding RRI = " << *RRIit);*/
+
+}
+
+
+std::map<uint16_t, NrV2XUeMac::V2XSchedulingInfo> 
+NrV2XUeMac::UnimoreSortSelections (V2XSchedulingInfo Selection1, V2XSchedulingInfo Selection2, uint32_t maxDiffSlots)
+{
+   NS_LOG_FUNCTION(this);
+   NS_LOG_INFO("First selection is at SF(" << Selection1.m_nextReservedFrame << "," << Selection1.m_nextReservedSubframe << "), second selection is at SF(" 
+   << Selection2.m_nextReservedFrame << "," << Selection2.m_nextReservedSubframe << ")");
+
+   std::map<uint16_t, V2XSchedulingInfo> sortedGrantsMap;
+
+   if (Selection1.m_nextReservedFrame == Selection2.m_nextReservedFrame)       
    {
-     case 0:
-       T_proc_0 = 1;
-       break;
-     case 1:
-       T_proc_0 = 1;
-       break;
-     case 2:
-       T_proc_0 = 2;
-       break;
-     case 3:
-       T_proc_0 = 4;
-       break;
+     if (Selection1.m_nextReservedSubframe <= Selection2.m_nextReservedSubframe)
+     {
+       NS_LOG_DEBUG("First selection is initial");
+       sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, Selection1));
+       sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (2, Selection2));
+     }
+     else
+     {
+       NS_LOG_DEBUG("Second selection is initial");
+       sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, Selection2));
+       sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (2, Selection1));
+     }
    }
-
-   return T_proc_0;
-}
-
-
-uint16_t
-NrV2XUeMac::GetTproc1 (uint16_t numerologyIndex)
-{
-   uint16_t T_proc_1; //Defined in slots
-   switch (m_numerologyIndex)
-   {
-     case 0:
-       T_proc_1 = 3;
-       break;
-     case 1:
-       T_proc_1 = 5;
-       break;
-     case 2:
-       T_proc_1 = 9;
-       break;
-     case 3:
-       T_proc_1 = 17;
-       break;
-   }
-
-   return T_proc_1;
-}
-
-
-uint32_t
-NrV2XUeMac::GetCresel (uint32_t RRI)
-{
-   Ptr<UniformRandomVariable> uniformCresel = CreateObject<UniformRandomVariable> ();
-   uint32_t Cresel;
-   if (RRI >= 100)
-   {
-     Cresel =  uniformCresel ->  GetInteger (5,15); //Get a random integer in the interval [min, max]
-     //V2XGrant.m_Cresel = 10;
-   }      
    else
-   {  //TODO check if it works
-     uint16_t Cresel_bound;
-     Cresel_bound = 100 / std::max(20, (int)RRI);
-     Cresel = uniformCresel ->  GetInteger (5*Cresel_bound,15*Cresel_bound); //Get a random integer in the interval [min, max]
-     NS_LOG_DEBUG("RRI " << RRI << ", bound: " << Cresel_bound << ", Cresel: " << Cresel);
-   }       
-   return Cresel;
+   {
+     if ((uint32_t) abs((int)Selection1.m_nextReservedFrame - (int)Selection2.m_nextReservedFrame) > maxDiffSlots)
+     {
+       if (Selection1.m_nextReservedFrame > Selection2.m_nextReservedFrame)
+       {
+         NS_LOG_DEBUG("First selection is initial");
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, Selection1));
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (2, Selection2));
+       }
+       else
+       {
+         NS_LOG_DEBUG("Second selection is initial");
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, Selection2));
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (2, Selection1));
+       }
+     }
+     else
+     {
+       if (Selection1.m_nextReservedFrame > Selection2.m_nextReservedFrame)
+       {
+         NS_LOG_DEBUG("Second selection is initial");
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, Selection2));
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (2, Selection1));
+       }
+       else
+       {
+         NS_LOG_DEBUG("First selection is initial");
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, Selection1));
+         sortedGrantsMap.insert(std::pair<uint16_t, V2XSchedulingInfo> (2, Selection2));
+       }
+     }
+   }
+
+   return sortedGrantsMap;
+}
+
+
+SidelinkCommResourcePool::SubframeInfo 
+NrV2XUeMac::ComputeReEvaluationFrame(uint32_t frameNo, uint32_t subframeNo)
+{
+   // Re-evaluation mechanism
+   uint16_t T_3_slots = GetTproc1 (m_numerologyIndex);
+   SidelinkCommResourcePool::SubframeInfo ReEvaluationFrame;
+
+   if (subframeNo <= (T_3_slots % 10) )
+   {
+     ReEvaluationFrame.subframeNo = 10 + subframeNo - (T_3_slots % 10);
+     if (frameNo <= (T_3_slots/10 +1))                                       
+    // if (V2XGrant.m_nextReservedFrame == 1)
+       ReEvaluationFrame.frameNo = 1024 + frameNo - T_3_slots/10-1;
+     else
+       ReEvaluationFrame.frameNo = frameNo - T_3_slots/10 -1;
+   }
+   else
+   {
+     ReEvaluationFrame.subframeNo = subframeNo - (T_3_slots % 10);
+     ReEvaluationFrame.frameNo = frameNo - T_3_slots/10;
+   }
+  return ReEvaluationFrame;
 }
 
 
 NrV2XUeMac::V2XSidelinkGrant 
-NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pdb, uint32_t p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize, reselectionTrigger V2Xtrigger)
+NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pdb, double p_rsvp, uint8_t v2xMessageType, uint8_t v2xTrafficType, uint16_t ReselectionCounter, uint16_t PacketSize, uint16_t ReservationSize, reselectionTrigger V2Xtrigger)
 {        
    NS_LOG_FUNCTION(this);
          
    V2XSidelinkGrant V2XGrant;
+
+   NS_ASSERT_MSG(pdb < m_maxPDB, "Current implementation allows only PDB values smaller than 110 ms");
+
+
+//   NS_LOG_UNCOND("PDB " << pdb << " node " << m_rnti);
+//   std::cin.get();
 
    frameNo --;
    subframeNo --; 
@@ -1215,6 +1285,18 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
    else
      V2XGrant.m_Cresel = ReselectionCounter;
 
+   if (m_mixedTraffic)
+   { 
+     if ((m_AdaptiveScheduling) && (v2xTrafficType == 0x01))
+       V2XGrant.m_Cresel = 1;     
+     else if (m_dynamicScheduling) 
+       V2XGrant.m_Cresel = 1;     
+   }
+   else
+   {
+     if (m_dynamicScheduling)
+       V2XGrant.m_Cresel = 1;
+   }
 
    SidelinkCommResourcePool::SubframeInfo currentSF;
    currentSF.frameNo = frameNo;
@@ -1226,7 +1308,7 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
    uint16_t nsubCHsize = m_nsubCHsize; // [RB]
    //uint16_t startRBSubchannel = 0;
    uint16_t NSubCh; //the total number of subchannels
-   NSubCh = std::floor(m_BW_RBs / nsubCHsize); // 50/10 
+   NSubCh = std::floor(m_BW_RBs / nsubCHsize);  
    uint16_t L_SubCh = m_L_SubCh, L_RBs; // the number of subchannels for the reservation
     	 
    uint32_t AdjustedPacketSize, AdjustedReservationSize;  
@@ -1241,7 +1323,7 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
 //   uint16_t N_CSR_per_SF = NSubCh - L_SubCh + 1;
    NS_LOG_INFO("N_CSR_per_SF: " << (int) NSubCh - L_SubCh + 1);
  //  uint16_t T_1 = 4; // should be T1 = 4 (see 3GPP)
-   double T_2 = pdb - 1; 
+   double T_2 = pdb - m_slotDuration; 
 //   uint16_t T_1_slots = T_1/m_slotDuration;
    uint32_t T_2_slots = T_2/m_slotDuration;
 
@@ -1250,11 +1332,6 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
    uint16_t nbRb_Pssch = L_SubCh*nsubCHsize ; //FIXME: Mode 2 PSSCH
    uint16_t nbRb_Pscch = nsubCHsize ; //FIXME: Mode 2 PSCCH (Occupy only the first subchannel)
 
-   V2XGrant.m_tpc = 0;
-   V2XGrant.m_SFGap = 0; // for now, no retransmission
-   V2XGrant.m_adjacency = true;
- 
-   uint32_t subframeInitialTx;
    Ptr<UniformRandomVariable> uniformRnd = CreateObject<UniformRandomVariable> ();
                       
    // Second Option to build the list
@@ -1287,7 +1364,7 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
    uint32_t nCSRpastTx, nCSRfinal;
 
    // Print the list of CSRs (Sa)
-   /*NS_LOG_DEBUG("Printing the initial list Sa of candidate resources");
+  /* NS_LOG_DEBUG("Printing the initial list Sa of candidate resources");
      UnimorePrintCSR(Sa);*/
 
 //   if (m_rnti == m_debugNode)
@@ -1295,12 +1372,12 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
 
    if (!m_randomSelection)
    {    
-     L1 = Mode2Step1 (Sa, currentSF, V2XGrant, T_2, NSubCh, L_SubCh, &iterationsCounter, &psschThresh, &nCSRpastTx, true);
+     L1 = Mode2Step1 (Sa, currentSF, V2XGrant, T_2, NSubCh, L_SubCh, &iterationsCounter, &psschThresh, &nCSRpastTx, false);
    }
    else
    {
      //In case of random selection, L1 is filled with all CSRs
-     NS_LOG_DEBUG("Random selection!");
+     NS_FATAL_ERROR("Random selection is not implemented!");
   //   L1 = Sa; // Already assigned
    }
 //   std::cin.get();
@@ -1345,87 +1422,199 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
      }  
 
    }
-
   
-   uint16_t selectedCSR;
-   SidelinkCommResourcePool::SubframeInfo selectedSF;
+   uint16_t firstSelectedCSR;
+   SidelinkCommResourcePool::SubframeInfo firstSelectedSF;
+
+   uint16_t secondSelectedCSR;
+   SidelinkCommResourcePool::SubframeInfo secondSelectedSF;
+
    if (m_randomSelection)  
    { 
-     subframeInitialTx = uniformRnd -> GetInteger (3, pdb);
+     NS_FATAL_ERROR("Random selection not implemented");
    }
    else // if list L2 Enabled
    {
      Ptr<UniformRandomVariable> selectFromL2 = CreateObject<UniformRandomVariable> ();
-     CandidateCSRl2 selectedResourceFromL2 = finalL2[selectFromL2 -> GetInteger (0, finalL2.size () - 1)];
-     selectedCSR = selectedResourceFromL2.CSRIndex;
-     selectedSF = selectedResourceFromL2.subframe;
-     NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << selectedCSR << " at SF(" << selectedSF.frameNo << "," << selectedSF.subframeNo << "). Adjusted to SF(" << selectedSF.frameNo+1 << "," << selectedSF.subframeNo+1 << ")");
+     CandidateCSRl2 FirstSelectedResource = finalL2[selectFromL2 -> GetInteger (0, finalL2.size () - 1)];
+
+     firstSelectedCSR = FirstSelectedResource.CSRIndex;
+     firstSelectedSF = FirstSelectedResource.subframe;
+
+     if ((m_dynamicScheduling) && (m_FreqReuse))
+     {
+       NS_LOG_DEBUG("Frequency-reuse scheduling is enabled");
+       NodeContainer GlobalContainer = NodeContainer::GetGlobal();
+       Ptr<Node> Node;
+       Vector posNode;
+       Ptr<MobilityModel> mobNode;
+       for (NodeContainer::Iterator L = GlobalContainer.Begin(); L != GlobalContainer.End(); ++L) 
+       {
+         Node = *L;
+         if (Node->GetId() == m_rnti)
+         {
+           mobNode = Node->GetObject<MobilityModel>();
+           break;
+         }
+       }  
+       posNode = mobNode->GetPosition();
+       NS_LOG_DEBUG("Node " << m_rnti << " at X = " << posNode.x << " meters");
+
+       for (std::map < uint16_t, std::vector < std::pair <double, double>>>::iterator mapIT = m_subchannelsMap.begin(); mapIT != m_subchannelsMap.end(); mapIT++)
+       {
+         std::vector < std::pair <double, double>> GeoCellsVector = mapIT->second;
+         for(std::vector < std::pair <double, double>>::iterator GeoCellsIT = GeoCellsVector.begin(); GeoCellsIT != GeoCellsVector.end(); GeoCellsIT++)
+         {
+           if ((posNode.x >= GeoCellsIT->first) && (posNode.x < GeoCellsIT->second))
+             firstSelectedCSR = mapIT->first;
+         }
+       }
+       
+       firstSelectedSF.frameNo = frameNo;
+       firstSelectedSF.subframeNo = subframeNo + 1;
+       if (firstSelectedSF.subframeNo > 9)
+       {
+         firstSelectedSF.subframeNo = firstSelectedSF.subframeNo % 10;
+         firstSelectedSF.frameNo++;
+       }
+       firstSelectedSF.frameNo = firstSelectedSF.frameNo % 1024;
+
+     } // end      if ((m_dynamicScheduling) && (m_FreqReuse))
+
+     NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << firstSelectedCSR << " at SF(" << firstSelectedSF.frameNo << "," << firstSelectedSF.subframeNo << "). Adjusted to SF(" << firstSelectedSF.frameNo+1 << "," << firstSelectedSF.subframeNo+1 << ")");
+
+     V2XGrant.m_TxNumber = 1;
+     V2XGrant.m_TxIndex = 1;
+
+     V2XSchedulingInfo firstSelection, secondSelection;
+     firstSelection.m_rbLenPssch = nbRb_Pssch;
+     firstSelection.m_rbLenPscch = nbRb_Pscch;
+     firstSelection.m_nextReservedSubframe = firstSelectedSF.subframeNo+1;
+     firstSelection.m_nextReservedFrame = firstSelectedSF.frameNo+1;
+     firstSelection.m_rbStartPscch = firstSelectedCSR * nsubCHsize; // (Mode 2)
+     firstSelection.m_rbStartPssch = firstSelectedCSR * nsubCHsize; // (Mode 2)
+
+     SidelinkCommResourcePool::SubframeInfo firstReEvaluationSF = ComputeReEvaluationFrame(firstSelection.m_nextReservedFrame, firstSelection.m_nextReservedSubframe);
+     firstSelection.m_ReEvaluationFrame = firstReEvaluationSF.frameNo;
+     firstSelection.m_ReEvaluationSubframe = firstReEvaluationSF.subframeNo;
+     firstSelection.m_EnableReEvaluation = true;
+     firstSelection.m_SelectionTrigger = V2Xtrigger;
+     firstSelection.m_announced = false;
+
+     if (m_EnableReTx)
+     {
+
+/*       NS_LOG_DEBUG ("Re-transmissions enabled! Selecting another SSR");
+       for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+       {
+         NS_LOG_DEBUG("CSRindex: " << (int) L2It->CSRIndex << ", SF(" <<  L2It->subframe.frameNo << "," << L2It->subframe.subframeNo << "), RSSI: " <<  L2It->rssi << " mW");
+       }
+       std::cin.get();*/
+       std::vector<CandidateCSRl2> CandidateList_ReTx; 
+       for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+       {
+         if (!(L2It->subframe == FirstSelectedResource.subframe) && EvaluateSlotsDifference(firstSelectedSF, L2It->subframe, m_maxPDB/m_slotDuration) < 32)
+           CandidateList_ReTx.push_back(*L2It);
+       }
+
+/*       NS_LOG_DEBUG("Print the new list of candidate resources");
+       for (std::vector<CandidateCSRl2>::iterator L2It = CandidateList_ReTx.begin (); L2It != CandidateList_ReTx.end (); L2It++)
+       {
+         NS_LOG_DEBUG("CSRindex: " << (int) L2It->CSRIndex << ", SF(" <<  L2It->subframe.frameNo << "," << L2It->subframe.subframeNo << "), RSSI: " <<  L2It->rssi << " mW");
+       }
+       std::cin.get();*/
+
+//       NS_ASSERT_MSG(CandidateList_ReTx.size() != 0, "Candidate resources list for re-transmissions is empty");
+
+       bool enableSecondReEvaluation;
+       if (CandidateList_ReTx.size() == 0) 
+       { 
+         NS_LOG_INFO("There are no candidate resources within 32 slots, building a new list");
+         enableSecondReEvaluation =  true;
+         CandidateList_ReTx.clear();
+         for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+         {
+           if (!(L2It->subframe == FirstSelectedResource.subframe))
+              CandidateList_ReTx.push_back(*L2It);
+         }
+       }
+       else
+       {
+         enableSecondReEvaluation = false;
+       }
+
+       if (CandidateList_ReTx.size() != 0)
+       { 
+         NS_LOG_INFO("There are enough resources for selecting a re-transmission");
+         V2XGrant.m_TxNumber += 1;
+
+         CandidateCSRl2 SecondSelectedResource = CandidateList_ReTx[selectFromL2 -> GetInteger (0, CandidateList_ReTx.size () - 1)];
+         secondSelectedCSR = SecondSelectedResource.CSRIndex;
+         secondSelectedSF = SecondSelectedResource.subframe;
+
+         NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << secondSelectedCSR << " at SF(" << secondSelectedSF.frameNo << "," << secondSelectedSF.subframeNo << "). Adjusted to SF(" << secondSelectedSF.frameNo+1 << "," << secondSelectedSF.subframeNo+1 << ")");
+
+         NS_ASSERT_MSG(!(firstSelectedSF.frameNo == secondSelectedSF.frameNo && firstSelectedSF.subframeNo == secondSelectedSF.subframeNo ), "First and second selection should be on different slots");  
+
+         secondSelection.m_rbLenPssch = nbRb_Pssch;
+         secondSelection.m_rbLenPscch = nbRb_Pscch;
+         secondSelection.m_nextReservedSubframe = secondSelectedSF.subframeNo+1;
+         secondSelection.m_nextReservedFrame = secondSelectedSF.frameNo+1;
+         secondSelection.m_rbStartPscch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+         secondSelection.m_rbStartPssch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+      
+         SidelinkCommResourcePool::SubframeInfo secondReEvaluationSF = ComputeReEvaluationFrame(secondSelection.m_nextReservedFrame, secondSelection.m_nextReservedSubframe);
+         secondSelection.m_ReEvaluationFrame = secondReEvaluationSF.frameNo;
+         secondSelection.m_ReEvaluationSubframe = secondReEvaluationSF.subframeNo;
+         secondSelection.m_EnableReEvaluation = true;
+         secondSelection.m_SelectionTrigger = V2Xtrigger;
+         secondSelection.m_announced = false;
+
+         NS_LOG_INFO("Slots difference = " << EvaluateSlotsDifference(firstSelectedSF, secondSelectedSF, m_maxPDB/m_slotDuration));
+        
+         V2XGrant.m_grantTransmissions = UnimoreSortSelections(firstSelection, secondSelection, m_maxPDB/m_slotDuration); //Sort the two grants
+
+         if (!enableSecondReEvaluation)
+           V2XGrant.m_grantTransmissions[2].m_EnableReEvaluation = false;
+       }
+       else
+       {
+         NS_LOG_INFO("Not enough resources for selecting a re-transmission");
+         V2XGrant.m_grantTransmissions.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, firstSelection));
+         NS_ASSERT_MSG(false, "Not enough resources for selecting a re-transmission");
+       }
+     }
+     else
+     {
+       V2XGrant.m_grantTransmissions.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, firstSelection));
+     }
 
      //Fake grants to force collisions
     /* if (m_rnti == 1)
      {
-       selectedCSR = 0;
-       selectedSF = {110,7};
+       firstSelectedCSR = 0;
+       firstSelectedSF = {110,7};
      }     */
     /* if ((m_rnti == 2) && (frameNo <130))
      {
-       selectedCSR = 0;
-       selectedSF = {130,8};
+       firstSelectedCSR = 0;
+       firstSelectedSF = {130,8};
      }
      if ((m_rnti == 3) && (frameNo <130))
      {
-       selectedCSR = 0;
-       selectedSF = {130,8};
+       firstSelectedCSR = 0;
+       firstSelectedSF = {130,8};
      } */
     /* if (m_rnti == 4)
      {
-       selectedCSR = 2;
-       selectedSF = {20,5};
+       firstSelectedCSR = 2;
+       firstSelectedSF = {20,5};
      }*/
 
-  //   SidelinkCommResourcePool::SubframeInfo SFoffset = selectedSF - currentSF;
-     SidelinkCommResourcePool::SubframeInfo SFoffset;
-     if (selectedSF.frameNo < currentSF.frameNo)
-        SFoffset.frameNo = selectedSF.frameNo + 1024 - currentSF.frameNo;
-     else
-        SFoffset.frameNo = selectedSF.frameNo - currentSF.frameNo;
-
-     if (selectedSF.subframeNo < currentSF.subframeNo)
-     {
-        SFoffset.subframeNo = selectedSF.subframeNo + 10 -  currentSF.subframeNo;
-        SFoffset.frameNo--;
-     }
-     else
-        SFoffset.subframeNo = selectedSF.subframeNo -  currentSF.subframeNo;
-
-     if (m_rnti == m_debugNode)
-     {
-       std::ofstream SFoffsetFile;
-       SFoffsetFile.open(m_outputPath + "SFOffset.csv", std::ios_base::app);
-       SFoffsetFile << "Now: " << Simulator::Now ().GetSeconds () << " s, " << "Selected: (" << selectedSF.frameNo << "," << selectedSF.subframeNo << "), current: (" << currentSF.frameNo << "," << currentSF.subframeNo << "), Offset: (" << SFoffset.frameNo << "," << SFoffset.subframeNo << ")"<< "\r\n";
-       SFoffsetFile.close ();
-     }
-     subframeInitialTx = 10 * SFoffset.frameNo + SFoffset.subframeNo;
-    // NS_LOG_DEBUG("Subframe Initial Tx " << subframeInitialTx);
-     NS_ASSERT (( subframeInitialTx % 10 == SFoffset.subframeNo) &&  (subframeInitialTx / 10) % 1024 == SFoffset.frameNo );
-   } 
-
-   if (m_rnti == m_debugNode)
-   {
-     std::ofstream initialTxFile;
-     initialTxFile.open(m_outputPath + "initialTx.csv", std::ios_base::app);
-     initialTxFile << m_rnti << subframeInitialTx << ","<< (int) selectedCSR << "\r\n";
-     initialTxFile.close ();
-   }
-
-   V2XGrant.m_subframeInitialTx = subframeInitialTx;
+   } // end else " if (m_randomSelection) "
 
    V2XGrant.m_tbSize = 0; //computed later
 
-   V2XGrant.m_nextReservedSubframe = selectedSF.subframeNo+1;
-   V2XGrant.m_nextReservedFrame = selectedSF.frameNo+1;
-   V2XGrant.m_rbLenPssch = nbRb_Pssch;
-   V2XGrant.m_rbLenPscch = nbRb_Pscch;
    /* std::ofstream selectedFile;
    selectedFile.open(m_outputPath + "selectedFile.txt", std::ios_base::app);
    selectedFile << "Now true: SF(" << currentSF.frameNo+1 << "," << currentSF.subframeNo+1 << ", Selected true: SF(" << V2XGrant.m_nextReservedFrame << "," << V2XGrant.m_nextReservedSubframe << ")" << "\r\n";
@@ -1436,67 +1625,26 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
    } 
    else 
    {
-     V2XGrant.m_resPscch = selectedCSR;
-     V2XGrant.m_resPssch = V2XGrant.m_resPscch;
  //    V2XGrant.m_rbLenPscch = 2; //fixed and standardized (Mode 4)
- //    V2XGrant.m_rbStartPscch = V2XGrant.m_resPscch * nsubCHsize; // (Mode 4)
-     V2XGrant.m_rbStartPscch = selectedCSR * nsubCHsize; // (Mode 2)
-     V2XGrant.m_rbStartPssch = selectedCSR * nsubCHsize; // (Mode 2)
+ //    V2XGrant.m_rbStartPscch = firstSelectedCSR * nsubCHsize; // (Mode 4)
+  //   V2XGrant.m_rbStartPscch = firstSelectedCSR * nsubCHsize; // (Mode 2)
+   //  V2XGrant.m_rbStartPssch = firstSelectedCSR * nsubCHsize; // (Mode 2)
    }
 
- /*  if (m_rnti == 1 && false)
+ //  SidelinkCommResourcePool::SubframeInfo ReEvaluationSF = ComputeReEvaluationFrame(V2XGrant.m_nextReservedFrame, V2XGrant.m_nextReservedSubframe);
+ //  V2XGrant.m_ReEvaluationFrame = ReEvaluationSF.frameNo;
+ //  V2XGrant.m_ReEvaluationSubframe = ReEvaluationSF.subframeNo;
+
+//   V2XGrant.m_EnableReEvaluation = true;
+//   V2XGrant.m_SelectionTrigger = V2Xtrigger;
+
+   NS_LOG_DEBUG(Simulator::Now ().GetSeconds () << " UE " << m_rnti << " selected " << V2XGrant.m_grantTransmissions.size() << " resource(s) with Cresel " << V2XGrant.m_Cresel);
+   for (std::map<uint16_t, V2XSchedulingInfo>::iterator grantsIT = V2XGrant.m_grantTransmissions.begin(); grantsIT != V2XGrant.m_grantTransmissions.end(); grantsIT++)
    {
-      sensingDebug.open (m_outputPath + "sensingDebug.txt", std::ios_base::app);
-      sensingDebug << "CSR Index " << (int) selectedCSR << ", SF(" << V2XGrant.m_nextReservedFrame << "," << V2XGrant.m_nextReservedSubframe << ")\r\n \r\n";
-      sensingDebug.close ();
-   }    */
-   // dummy: retrieve rsrp information
-   std::map <Time, PsschRsrp>::iterator itRsrp;
-   for (itRsrp = m_PsschRsrpMap.begin (); itRsrp != m_PsschRsrpMap.end (); itRsrp++)
-   {
-     if (itRsrp != m_PsschRsrpMap.end ())
-     {
-           NS_LOG_INFO("Rnti " << m_rnti << " - Now: " << Simulator::Now().GetSeconds() << "s, SF:(" << frameNo << "," << subframeNo << "), Cycle no." << m_absSFN << ", Meas. Time: " << (*itRsrp).first.GetSeconds() << "s, PSSCH-RSRP: " <<  (*itRsrp).second.psschRsrpDb << "dB" );
-     }
+     NS_LOG_DEBUG("Selection " << grantsIT->first << " at SF(" << grantsIT->second.m_nextReservedFrame << "," << grantsIT->second.m_nextReservedSubframe << "), rbStart (PSSCH and PSCCH) " 
+     << grantsIT->second.m_rbStartPssch << ", rbLen (PSCCH) " << grantsIT->second.m_rbLenPscch << ", rbLen (PSSCH) " << grantsIT->second.m_rbLenPssch << ". Re-evaluation enabled? " << grantsIT->second.m_EnableReEvaluation
+     << " at SF(" << grantsIT->second.m_ReEvaluationFrame << "," << grantsIT->second.m_ReEvaluationSubframe << ")");
    }
-
-
-   // Re-evaluation mechanism
-   uint16_t T_3_slots = GetTproc1 (m_numerologyIndex);
-
-   if (V2XGrant.m_nextReservedSubframe <= (T_3_slots % 10) )
-   {
-     V2XGrant.m_ReEvaluationSubframe = 10 + V2XGrant.m_nextReservedSubframe - (T_3_slots % 10);
-     if (V2XGrant.m_nextReservedFrame <= (T_3_slots/10 +1))                                       
-    // if (V2XGrant.m_nextReservedFrame == 1)
-       V2XGrant.m_ReEvaluationFrame = 1024 + V2XGrant.m_nextReservedFrame - T_3_slots/10-1;
-     else
-       V2XGrant.m_ReEvaluationFrame = V2XGrant.m_nextReservedFrame - T_3_slots/10 -1;
-   }
-   else
-   {
-     V2XGrant.m_ReEvaluationSubframe = V2XGrant.m_nextReservedSubframe - (T_3_slots % 10);
-     V2XGrant.m_ReEvaluationFrame = V2XGrant.m_nextReservedFrame - T_3_slots/10;
-   }
-
-   V2XGrant.m_EnableReEvaluation = true;
-   V2XGrant.m_SelectionTrigger = V2Xtrigger;
-
-/*   if (SubtractFrames(V2XGrant.m_nextReservedFrame, currentSF.frameNo+1 , V2XGrant.m_nextReservedSubframe, currentSF.subframeNo+1) < GetTproc1 (m_numerologyIndex))
-   {
-     NS_LOG_UNCOND("Not re-evaluating!");
-     std::cin.get();
-   }*/
- /*  if (V2Xtrigger == ReEVALUATION)
-   {
-//     V2XGrant.m_ReEvaluationSubframe = 99999;
-//     V2XGrant.m_ReEvaluationFrame = 99999;
-     V2XGrant.m_EnableReEvaluation = false;
-   }*/
-
-   NS_LOG_DEBUG(Simulator::Now ().GetSeconds () << " UE " << m_rnti << " selected SF(" << V2XGrant.m_nextReservedFrame << "," 
-   << V2XGrant.m_nextReservedSubframe << "), rbStart (PSSCH) " << V2XGrant.m_rbStartPssch << ", rbLen (PSSCH) " << V2XGrant.m_rbLenPssch 
-   << ", rbStart (PSCCH) " << V2XGrant.m_rbStartPscch << ", rbLen (PSCCH) " << V2XGrant.m_rbLenPscch << ", Cresel " << V2XGrant.m_Cresel);
 
    UeSelectionInfo tmp;
    tmp.selGrant = V2XGrant;
@@ -1518,42 +1666,50 @@ NrV2XUeMac::V2XSelectResources (uint32_t frameNo, uint32_t subframeNo, double pd
      NrV2XUeMac::prevPrintTime_selection = Simulator::Now ().GetSeconds();
      std::ofstream SSPSlog;
      SSPSlog.open (m_outputPath + "SSPSlog.txt", std::ios_base::app);
-     std::ofstream SSPSlogEXT;
+     for(std::vector<UeSelectionInfo>::iterator selIT = NrV2XUeMac::SelectedGrants.begin(); selIT != NrV2XUeMac::SelectedGrants.end(); selIT++)
+     {
+       for (std::map<uint16_t, V2XSchedulingInfo>::iterator grantsIT =  selIT->selGrant.m_grantTransmissions.begin(); grantsIT !=  selIT->selGrant.m_grantTransmissions.end(); grantsIT++) 
+       { 
+       SSPSlog << selIT->nodeId << "," << selIT->time << "," << selIT->selFrame.frameNo+1 << "," << selIT->selFrame.subframeNo+1 << "," << selIT->iterations << "," << selIT->RSRPthresh << "," 
+       << selIT->nCSRfinal << "," << selIT->nCSRpastTx << "," << selIT->nCSRinitial << "," << selIT->selGrant.m_Cresel << "," << selIT->selGrant.m_RRI << "," << (int)selIT->selGrant.m_RRI/m_slotDuration << ","
+       << selIT->pdb << "," << selIT->selGrant.m_grantTransmissions.size() << "," << grantsIT->first << "," << grantsIT->second.m_SelectionTrigger << "," << grantsIT->second.m_nextReservedFrame << "," 
+       << grantsIT->second.m_nextReservedSubframe << "," << grantsIT->second.m_rbStartPssch << "," << grantsIT->second.m_rbLenPssch << "," << grantsIT->second.m_EnableReEvaluation << "," 
+       << grantsIT->second.m_ReEvaluationFrame << "," << grantsIT->second.m_ReEvaluationSubframe << std::endl;
+       }
+     }
+     SSPSlog.close();
+
+     /*std::ofstream SSPSlogEXT;
      SSPSlogEXT.open (m_outputPath + "SSPSlog_EXT.txt", std::ios_base::app);
      for(std::vector<UeSelectionInfo>::iterator selIT = NrV2XUeMac::SelectedGrants.begin(); selIT != NrV2XUeMac::SelectedGrants.end(); selIT++)
      {
-       SSPSlog << selIT->selGrant.m_SelectionTrigger << "," << selIT->time << "," << selIT->selFrame.frameNo+1 << "," << selIT->selFrame.subframeNo+1 << "," << selIT->nodeId << "," << selIT->iterations 
-       << "," << selIT->RSRPthresh << "," << selIT->nCSRfinal << "," << selIT->nCSRpastTx << "," << selIT->nCSRinitial << "," << selIT->selGrant.m_nextReservedFrame << "," << selIT->selGrant.m_nextReservedSubframe << "," 
-       << selIT->selGrant.m_ReEvaluationFrame << "," << selIT->selGrant.m_ReEvaluationSubframe << "," << selIT->selGrant.m_rbStartPssch << "," << selIT->selGrant.m_rbLenPssch << "," 
-       << selIT->selGrant.m_rbStartPscch << "," << selIT->selGrant.m_rbLenPscch << "," << selIT->selGrant.m_Cresel << "," << selIT->selGrant.m_RRI << "," << (int) selIT->selGrant.m_RRI/m_slotDuration << "," << selIT->pdb << std::endl;
-
-       if (selIT->selGrant.m_SelectionTrigger == COUNTER)
-         SSPSlogEXT << "Counter reselection";
-       else if (selIT->selGrant.m_SelectionTrigger == LATENCYandSIZE)
-         SSPSlogEXT << "Latency and size reselection";
-       else if (selIT->selGrant.m_SelectionTrigger == LATENCY)
-         SSPSlogEXT << "Latency reselection";
-       else if (selIT->selGrant.m_SelectionTrigger == SIZE)
-         SSPSlogEXT << "Size reselection";
-       else
-         SSPSlogEXT << "Re-evaluation";
-       SSPSlogEXT << " at time: " << selIT->time << ", SF(" << selIT->selFrame.frameNo+1 << "," <<  selIT->selFrame.subframeNo+1 << ") Node " << selIT->nodeId 
-       << ", Number of iterations: " << selIT->iterations << ", PSSCH Threshold = " << selIT->RSRPthresh << " dBm, final L1 size = " << selIT->nCSRfinal << ", partial L1 size = " << selIT->nCSRpastTx 
-       << ", total CSRs: " << selIT->nCSRinitial << ", Next: SF(" << selIT->selGrant.m_nextReservedFrame << "," << selIT->selGrant.m_nextReservedSubframe << "), rbStartPSSCH: " 
-       << selIT->selGrant.m_rbStartPssch << ", rbLenPSSCH: " << selIT->selGrant.m_rbLenPssch << ", rbStartPSCCH: " << selIT->selGrant.m_rbStartPscch << ", rbLenPSCCH: " 
-       << selIT->selGrant.m_rbLenPscch<< ", Cresel: " << selIT->selGrant.m_Cresel << ", RRI[ms]: " << selIT->selGrant.m_RRI << ", RRI[slots] " << (int)selIT->selGrant.m_RRI/m_slotDuration << ", ReEvaluation at SF(" 
-       << selIT->selGrant.m_ReEvaluationFrame << "," << selIT->selGrant.m_ReEvaluationSubframe << ") PDB = " << selIT->pdb << " ms" << std::endl;
+       SSPSlogEXT << "UE " << selIT->nodeId << ": at time " << selIT->time << ", SF(" << selIT->selFrame.frameNo+1 << "," <<  selIT->selFrame.subframeNo+1 << "), Number of iterations: " << selIT->iterations << ", PSSCH Threshold = " 
+       << selIT->RSRPthresh << " dBm, final L1 size = " << selIT->nCSRfinal << ", partial L1 size = " << selIT->nCSRpastTx << ", total CSRs: " << selIT->nCSRinitial << ", Cresel: " << selIT->selGrant.m_Cresel << ", RRI[ms]: " << selIT->selGrant.m_RRI << ", RRI[slots] " 
+       << (int)selIT->selGrant.m_RRI/m_slotDuration << ", PDB = " << selIT->pdb << " ms, number of transmissions " << selIT->selGrant.m_grantTransmissions.size() << std::endl;
+       for (std::map<uint16_t, V2XSchedulingInfo>::iterator grantsIT =  selIT->selGrant.m_grantTransmissions.begin(); grantsIT !=  selIT->selGrant.m_grantTransmissions.end(); grantsIT++) 
+       { 
+         SSPSlogEXT << "--- Index " << grantsIT->first << ": ";
+         if (grantsIT->second.m_SelectionTrigger == COUNTER)
+           SSPSlogEXT << "Counter reselection";
+         else if (grantsIT->second.m_SelectionTrigger == LATENCYandSIZE)
+           SSPSlogEXT << "Latency and size reselection";
+         else if (grantsIT->second.m_SelectionTrigger == LATENCY)
+           SSPSlogEXT << "Latency reselection";
+         else if (grantsIT->second.m_SelectionTrigger == SIZE)
+           SSPSlogEXT << "Size reselection";
+         else
+           SSPSlogEXT << "Re-evaluation";
+         SSPSlogEXT << ", Next SF(" << grantsIT->second.m_nextReservedFrame << "," << grantsIT->second.m_nextReservedSubframe << ") from " << grantsIT->second.m_rbStartPssch << " for " 
+         << grantsIT->second.m_rbLenPssch << " RBs, ReEvaluation enabled ? " << grantsIT->second.m_EnableReEvaluation << " at SF(" << grantsIT->second.m_ReEvaluationFrame << "," << grantsIT->second.m_ReEvaluationSubframe << ")" << std::endl;
+       }
      }
-     SSPSlog.close();
-     SSPSlogEXT.close();
+     SSPSlogEXT.close(); */
+
      NrV2XUeMac::SelectedGrants.clear();
    }
- 
-   NS_LOG_DEBUG("Re-evaluation at SF(" << V2XGrant.m_ReEvaluationFrame << "," << V2XGrant.m_ReEvaluationSubframe << ")");
-
 
 //   if (m_rnti == m_debugNode)
-//     std::cin.get();
+//   std::cin.get();
 
    return V2XGrant;
 }
@@ -1592,127 +1748,8 @@ NrV2XUeMac::SelectionWindow (SidelinkCommResourcePool::SubframeInfo currentSF, u
 
 
 std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo>> 
-NrV2XUeMac::Mode2Step1_RemovePastTx (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, SidelinkCommResourcePool::SubframeInfo currentSF, V2XSidelinkGrant V2XGrant, double T_2)
-{
-   NS_LOG_FUNCTION(this);
-   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa_noPastTx;
-   Sa_noPastTx = Sa;
-
-   // Remove old frames used for transmission
-   m_prevListUpdate.frameNo = currentSF.frameNo+1;
-   m_prevListUpdate.subframeNo = currentSF.subframeNo+1;
-   UpdatePastTxInfo(currentSF.frameNo+1, currentSF.subframeNo+1);
-
-   // Print the list of CSRs (Sa)
- /*  NS_LOG_DEBUG("Printing the initial list Sa of candidate resources, after removing past transmissions");
-   UnimorePrintCSR(Sa);*/
-
-   std::list<std::pair<Time,SidelinkCommResourcePool::SubframeInfo>>::iterator pastTxIt;
-
-   // Print the frames used for past transmissions 
- /*  NS_LOG_DEBUG("Print the frames used for past transmissions, UE " << m_rnti);
-   for (pastTxIt = m_pastTxUnimore.begin (); pastTxIt != m_pastTxUnimore.end (); pastTxIt++)
-   {
-     NS_LOG_DEBUG("Current time: " << Simulator::Now().GetSeconds() << " Tx Time: " << pastTxIt->first.GetSeconds() << " Frame: " << pastTxIt->second.frameNo << " subframe: " << pastTxIt->second.subframeNo);
-   }*/
-//   if (m_rnti == m_debugNode)
-//   std::cin.get();
-
-   // Create a list of the subframes to be removed from the selection window
-   std::vector<uint16_t>::iterator RRIit;
-   std::list<SidelinkCommResourcePool::SubframeInfo> rm_pastTx_frames;
-   for(RRIit = m_RRIvalues.begin(); RRIit != m_RRIvalues.end(); RRIit++)
-   {
-     uint16_t RRI_to_slot = *RRIit/m_slotDuration;
-//     NS_LOG_DEBUG("Working with RRI: " << *RRIit << " ms, and " << RRI_to_slot << " slots at SF(" << currentSF.frameNo << ", " << currentSF.subframeNo << ")");
-     for (pastTxIt = m_pastTxUnimore.begin (); pastTxIt != m_pastTxUnimore.end (); pastTxIt++)
-     {
-     //  NS_LOG_DEBUG("Past transmission at SF(" << pastTxIt->second.frameNo << ", " << pastTxIt->second.subframeNo << ")");
-       uint16_t Q;
-       SidelinkCommResourcePool::SubframeInfo insert_pastTx;
-       if ((SubtractFrames( currentSF.frameNo, pastTxIt->second.frameNo, currentSF.subframeNo, pastTxIt->second.subframeNo) <= *RRIit) && (*RRIit < (T_2 + 1)) )
-       {
-//         Q = std::ceil( (float) (T_2 + 1)/ *RRIit );
-         Q = std::ceil( (float) T_2/ *RRIit );
-//         NS_LOG_DEBUG("IF clause, Q= " << Q)  ;
-         for(uint16_t q = 1; q <= Q; q++)
-         {
-           insert_pastTx.subframeNo = (pastTxIt->second.subframeNo + q*RRI_to_slot)%10; // valid subframe index between 0 and 9
-           insert_pastTx.frameNo = (pastTxIt->second.frameNo  + (pastTxIt->second.subframeNo + q*RRI_to_slot) / 10) % 1024;  // valid frame index between 0 and 1023 
-//           NS_LOG_DEBUG("q= " << q << ", q*RRI= " << q*RRI_to_slot << " eliminate frame SF(" << insert_pastTx.frameNo << ", " << insert_pastTx.subframeNo << ")");
-           if ( find(rm_pastTx_frames.begin(), rm_pastTx_frames.end(), insert_pastTx) ==  rm_pastTx_frames.end())
-             rm_pastTx_frames.push_back(insert_pastTx);
-         }
-       }
-       else
-       { 
-         Q = 1;
-//         NS_LOG_DEBUG("ELSE clause, Q= " << Q)  ;
-         insert_pastTx.subframeNo = (pastTxIt->second.subframeNo + Q*RRI_to_slot) % 10; // valid subframe index between 0 and 9
-         insert_pastTx.frameNo = (pastTxIt->second.frameNo  + (pastTxIt->second.subframeNo + Q*RRI_to_slot) / 10) % 1024;  // valid frame index between 0 and 1023 
-//         NS_LOG_DEBUG("q=Q= " << Q << ", Q*RRI= " << Q*RRI_to_slot << " eliminate frame SF(" << insert_pastTx.frameNo << ", " << insert_pastTx.subframeNo << ")");
-         if ( find(rm_pastTx_frames.begin(), rm_pastTx_frames.end(), insert_pastTx) ==  rm_pastTx_frames.end())
-           rm_pastTx_frames.push_back(insert_pastTx);
-       }
-     }
-   
-   }
-
- /*  NS_LOG_DEBUG("Print the list of frames to be removed");
-   for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator rm_pastTxIt = rm_pastTx_frames.begin(); rm_pastTxIt != rm_pastTx_frames.end(); rm_pastTxIt++)
-   {
-     NS_LOG_DEBUG(rm_pastTxIt->frameNo << "," << rm_pastTxIt->subframeNo);
-   }*/
-//   if (m_rnti == m_debugNode)
-//     std::cin.get();
-
-   // Now remove the frames, considering my future transmissions as well (reselection counter + RRI)
-   for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator SaIt = Sa_noPastTx.begin(); SaIt != Sa_noPastTx.end(); SaIt++)
-   { 
-     NS_LOG_DEBUG("CSR index " << SaIt->first);
-     for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = SaIt->second.begin(); FrameIT != SaIt->second.end(); FrameIT++)
-     {
-  //     NS_LOG_DEBUG("Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo << ", Cresel " << V2XGrant.m_Cresel);
-       SidelinkCommResourcePool::SubframeInfo futureTxFrame;
-       uint16_t RRI_slots = V2XGrant.m_RRI/m_slotDuration;
-       for(uint16_t Cresel = 0; Cresel < V2XGrant.m_Cresel; Cresel++)
-//       for(uint16_t Cresel = 0; Cresel <= (V2XGrant.m_Cresel*10-1); Cresel++)
-       {
-         futureTxFrame.subframeNo = (FrameIT->subframeNo + Cresel*RRI_slots) % 10;  // valid subframe index between 0 and 9
-         futureTxFrame.frameNo = (FrameIT->frameNo + (FrameIT->subframeNo + Cresel*RRI_slots) / 10) % 1024; // valid frame index between 0 and 1023
-         std::list<SidelinkCommResourcePool::SubframeInfo>::iterator rm_pastTxIt;
-       //  NS_LOG_DEBUG("Future Frame " << futureTxFrame.frameNo << " subframe " << futureTxFrame.subframeNo << ", Cresel " << Cresel);
-         rm_pastTxIt = find(rm_pastTx_frames.begin(), rm_pastTx_frames.end(), futureTxFrame);
-         if (rm_pastTxIt != rm_pastTx_frames.end())
-         {
-     //    if ( find(rm_pastTx_frames.begin(), rm_pastTx_frames.end(), futureTxFrame) !=  rm_pastTx_frames.end())
-           NS_LOG_DEBUG("Erasing: list SF(" << FrameIT->frameNo << ", " << FrameIT->subframeNo << ") Future Tx SF(" << futureTxFrame.frameNo << ", " << futureTxFrame.subframeNo << ") past tx frame (" << rm_pastTxIt->frameNo << ", " << rm_pastTxIt->subframeNo << ")");
-           FrameIT = SaIt->second.erase(FrameIT);
-           FrameIT--;
-     //      NS_LOG_DEBUG("Current frame (" << FrameIT->frameNo << ", " << FrameIT->subframeNo << ")");
-           break;
-         }
-       }
-     }
- //  if (m_rnti == m_debugNode)
- //    std::cin.get();
-   }
-
- 
-   // Print the list of CSRs (Sa)
- //  NS_LOG_DEBUG("Printing the initial list Sa of candidate resources, after removing past transmissions");
-   //  UnimorePrintCSR(Sa);
-
-//   if (m_rnti == m_debugNode)
-//   std::cin.get();
-   return Sa_noPastTx;
-
-}
-
-
-std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo>> 
 NrV2XUeMac::Mode2Step1 (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, SidelinkCommResourcePool::SubframeInfo currentSF,  
-V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint32_t *iterationsCounter, double *psschThresh, uint32_t *nCSRpartial, bool saveData)
+V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint32_t *iterationsCounter, double *psschThresh, uint32_t *nCSRpartial, bool OnlyReTxions)
 {
    NS_LOG_FUNCTION(this);
    std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa_pastTx, L1;
@@ -1833,6 +1870,7 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
    uint32_t nCSRresidual = 0;
 
    NS_LOG_DEBUG("List Sa size after removing past transmissions: " << ComputeResidualCSRs (Sa_pastTx) );
+   NS_ASSERT_MSG(ComputeResidualCSRs (Sa_pastTx) > 0, "List of candidate resources is empty after removing past transmissions");
 //   if (ComputeResidualCSRs (Sa_pastTx) == 0)
 //     Sa_pastTx = Sa;
    
@@ -1849,7 +1887,7 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
 
 
    NS_LOG_DEBUG("Saving initial L1");
-   if (m_rnti == m_debugNode && saveData)
+   if (m_rnti == m_debugNode)
    {
      std::ofstream L1fileAlert;
      L1fileAlert.open (m_outputPath + "L1fileAlert.txt", std::ios_base::app);
@@ -1877,7 +1915,7 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
      //   m_prevListUpdate.subframeNo = subframeNo+1;
      UpdateSensedCSR(currentSF.frameNo+1, currentSF.subframeNo+1);
 
-     if (m_rnti == m_debugNode && saveData)
+     if (m_rnti == m_debugNode)
        NrV2XUeMac::UnimorePrintSensedCSR(m_sensedReservedCSRMap, currentSF, true);
 
   //   if (m_rnti == m_debugNode)
@@ -1916,7 +1954,7 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
 
      uint16_t Tproc0 = GetTproc0 (m_numerologyIndex);
 
-     NS_LOG_DEBUG("Now adding the resources to be removed. The RSRP threshold is " << *psschThresh << " dBm");
+     NS_LOG_DEBUG("Now adding the resources to be removed. The RSRP threshold is " << *psschThresh << " dBm. Only re-txions? " << OnlyReTxions);
      for (sensedIt = m_sensedReservedCSRMap.begin (); sensedIt != m_sensedReservedCSRMap.end (); sensedIt++)
      {
     //     NS_LOG_DEBUG("CSR index " << sensedIt->first);
@@ -1928,14 +1966,14 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
          {
            for (std::vector<ReservedCSR>::iterator resIt = sensedSFIt->second.begin(); resIt != sensedSFIt->second.end(); resIt++)
            {
-     //        NS_LOG_DEBUG("Reservation received at SF(" << sensedSFIt->first.frameNo << "," << sensedSFIt->first.subframeNo << ") with RRI = " << resIt->RRI << ", RSRP = "
-     //        << resIt->psschRsrpDb << ", Cresel = " << resIt->CreselRx << " from UE " << resIt->nodeId);
              uint16_t RRI_to_slot = resIt->RRI/m_slotDuration;
+             NS_LOG_DEBUG("Reservation received at SF(" << sensedSFIt->first.frameNo << "," << sensedSFIt->first.subframeNo << ") with RRI = " << resIt->RRI << " ms, RRI [slots] = " <<
+             RRI_to_slot << ", RSRP = " << resIt->psschRsrpDb << ", Cresel = " << resIt->CreselRx << " from UE " << resIt->nodeId << ". Is a ReTx? " << resIt->isReTx << ", for the same TB? " << resIt->isSameTB);
              uint16_t Q;
              SidelinkCommResourcePool::SubframeInfo toRemoveSF;
              if (resIt->psschRsrpDb >= *psschThresh)
              {
-               if ((SubtractFrames( currentSF.frameNo, sensedSFIt->first.frameNo, currentSF.subframeNo, sensedSFIt->first.subframeNo) <= (resIt->RRI /m_slotDuration)) && (resIt->RRI  < T_2) )
+               if ((SubtractFrames( currentSF.frameNo, sensedSFIt->first.frameNo, currentSF.subframeNo, sensedSFIt->first.subframeNo) <= (resIt->RRI /m_slotDuration)) && (resIt->RRI  < T_2) && !(resIt->isReTx))
                {
                  Q = std::ceil( (float) T_2/ resIt->RRI );
                 // NS_LOG_DEBUG("-------IF clause, Q= " << Q)  ;
@@ -1943,20 +1981,48 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
                  {
                    toRemoveSF.subframeNo = (sensedSFIt->first.subframeNo + q*RRI_to_slot)%10; // valid subframe index between 0 and 9
                    toRemoveSF.frameNo = (sensedSFIt->first.frameNo  + (sensedSFIt->first.subframeNo + q*RRI_to_slot) / 10) % 1024;  // valid frame index between 0 and 1023 
-       //            NS_LOG_DEBUG("q=" << q << ", q*RRI= " << q*RRI_to_slot << " eliminate frame SF(" << toRemoveSF.frameNo << ", " << toRemoveSF.subframeNo << ")");
+//                   NS_LOG_DEBUG("q=" << q << ", q*RRI= " << q*RRI_to_slot << " slots, eliminate frame SF(" << toRemoveSF.frameNo << ", " << toRemoveSF.subframeNo << ")");
                    if ( find(L1_out[sensedIt->first].begin(), L1_out[sensedIt->first].end(), toRemoveSF) ==  L1_out[sensedIt->first].end()) 
-                    L1_out[sensedIt->first].push_back(toRemoveSF);
+                   {
+                     if (OnlyReTxions)
+                     {
+                       if (resIt->isReTx && resIt->isSameTB) 
+                       {
+                         NS_LOG_DEBUG("Pushing back for removal");
+                         L1_out[sensedIt->first].push_back(toRemoveSF);
+                       }
+                     }
+                     else
+                     {
+                       NS_LOG_DEBUG("Pushing back for removal");
+                       L1_out[sensedIt->first].push_back(toRemoveSF); 
+                     }
+                   }
                  }
                }
                else
                {
                  Q = 1;
-            //     NS_LOG_DEBUG("-------ELSE clause, Q= " << Q)  ;
+//                 NS_LOG_DEBUG("-------ELSE clause, Q= " << Q)  ;
                  toRemoveSF.subframeNo = (sensedSFIt->first.subframeNo + Q*RRI_to_slot)%10; // valid subframe index between 0 and 9
                  toRemoveSF.frameNo = (sensedSFIt->first.frameNo  + (sensedSFIt->first.subframeNo + Q*RRI_to_slot) / 10) % 1024;  // valid frame index between 0 and 1023
-          //       NS_LOG_DEBUG("q=Q= " << Q << ", Q*RRI= " << Q*RRI_to_slot << " eliminate frame SF(" << toRemoveSF.frameNo << ", " << toRemoveSF.subframeNo << ")");
+                 NS_LOG_DEBUG("q=Q= " << Q << ", Q*RRI= " << Q*RRI_to_slot << " slots, eliminate frame SF(" << toRemoveSF.frameNo << ", " << toRemoveSF.subframeNo << ")");
                  if ( find(L1_out[sensedIt->first].begin(), L1_out[sensedIt->first].end(), toRemoveSF) ==  L1_out[sensedIt->first].end())
-                   L1_out[sensedIt->first].push_back(toRemoveSF);
+                 {
+                   if (OnlyReTxions)
+                   {
+                     if (resIt->isReTx && resIt->isSameTB) 
+                     {
+                       NS_LOG_DEBUG("Pushing back for removal");
+                       L1_out[sensedIt->first].push_back(toRemoveSF);
+                     }
+                   }
+                   else
+                   {
+                     NS_LOG_DEBUG("Pushing back for removal");
+                     L1_out[sensedIt->first].push_back(toRemoveSF); 
+                   }
+                 }
                }
              }
              else
@@ -1971,6 +2037,7 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
 
      } //end for (sensedIt = m_sensedReservedCSRMap.begin (); sensedIt != m_sensedReservedCSRMap.end (); sensedIt++)
 
+//    std::cin.get();
     /* NS_LOG_DEBUG("Printing L1_out");
      UnimorePrintCSR(L1_out);*/
 
@@ -2053,7 +2120,7 @@ V2XSidelinkGrant V2XGrant, double T_2, uint16_t NSubCh,  uint16_t L_SubCh, uint3
    } //end while
         
    NS_LOG_DEBUG("Saving final L1");
-   if (m_rnti == m_debugNode && saveData)
+   if (m_rnti == m_debugNode)
    {
      std::ofstream L1fileAlert;
      L1fileAlert.open (m_outputPath + "L1fileAlert.txt", std::ios_base::app);
@@ -2180,262 +2247,28 @@ NrV2XUeMac::UpdateSensedCSR (uint16_t current_frameNo, uint16_t current_subframe
        }
      }
    } // end for (sensedIt = m_sensedReservedCSRMap.begin (); sensedIt != m_sensedReservedCSRMap.end (); sensedIt++)
- 
 
 }
 
 
-void
-NrV2XUeMac::ReEvaluateResources (SidelinkCommResourcePool::SubframeInfo currentSF, std::map <uint32_t, PoolInfo>::iterator IT, NistLteMacSapProvider::NistReportBufferNistStatusParameters pktParams)
-{
-   NS_LOG_FUNCTION(this);
-   V2XSidelinkGrant currentV2Xgrant = IT->second.m_currentV2XGrant;
 
-   SidelinkCommResourcePool::SubframeInfo checkSF;
-   checkSF.frameNo = currentV2Xgrant.m_nextReservedFrame - 1;
-   checkSF.subframeNo = currentV2Xgrant.m_nextReservedSubframe - 1;
-
-//   SidelinkCommResourcePool::SubframeInfo currentSF;
-//   currentSF.frameNo = currentV2Xgrant.m_ReEvaluationFrame - 1;
-//   currentSF.subframeNo = currentV2Xgrant.m_ReEvaluationSubframe - 1;
-   currentSF.frameNo--;
-   currentSF.subframeNo--;
-
-   NS_LOG_DEBUG("Now: SF(" << currentSF.frameNo + 1 << "," << currentSF.subframeNo + 1 << "). Last Re-evaluation at SF(" << currentV2Xgrant.m_ReEvaluationFrame << "," << currentV2Xgrant.m_ReEvaluationSubframe << "): UE " << m_rnti << " checking SF(" 
-   << currentV2Xgrant.m_nextReservedFrame << "," << currentV2Xgrant.m_nextReservedSubframe << "), adjusted to SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")");   
-  
-//  uint16_t totalLength = (uint32_t)( currentV2Xgrant.m_rbLenPscch + currentV2Xgrant.m_rbLenPssch); //Mode 4
-   uint16_t L_SubCh = (uint32_t) currentV2Xgrant.m_rbLenPssch/m_nsubCHsize;
-   uint16_t NSubCh = std::floor(m_BW_RBs / m_nsubCHsize);
-   uint16_t CSRindex = ((uint32_t) currentV2Xgrant.m_rbStartPssch) / m_nsubCHsize;
-   
-   SidelinkCommResourcePool::SubframeInfo genTimeSF;
-   genTimeSF = SimulatorTimeToSubframe(Seconds(pktParams.V2XGenTime), m_slotDuration);
-   double ElapsedTime;
-   ElapsedTime = SubtractFrames(currentSF.frameNo+1, genTimeSF.frameNo, currentSF.subframeNo+1, genTimeSF.subframeNo)*m_slotDuration; //Expressed in ms
-   double newPDB = pktParams.V2XPdb - ElapsedTime;
-   NS_LOG_DEBUG("Elapsed time = " << ElapsedTime << " ms. PDB = " << pktParams.V2XPdb << " ms. New PDB = " << newPDB << " ms");
-   NS_LOG_DEBUG("Time left = " << newPDB << " ms, checking CSR index " << CSRindex << ". RBs from " << (uint32_t) currentV2Xgrant.m_rbStartPscch << " to " <<  currentV2Xgrant.m_rbStartPscch + L_SubCh*m_nsubCHsize);
-//   std::cin.get();
-  // uint32_t T_2_slots = (newPDB-1)/m_slotDuration;
-
-   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, L1, Sa_noPastTx;
- 
-//   Sa = SelectionWindow (currentSF, (newPDB-1)/m_slotDuration, NSubCh - L_SubCh + 1);
-   Sa = SelectionWindow (currentSF, (uint32_t)((newPDB-1)/m_slotDuration +1), NSubCh - L_SubCh + 1);
-   if (ComputeResidualCSRs(Sa) == 0)
-   {
-     NS_LOG_UNCOND("Selection window is empty");
-     NS_FATAL_ERROR("Selection window is empty");
-     std::cin.get();
-   }
-   // Print the list of CSRs (Sa)
-   NS_LOG_DEBUG("Printing the initial list Sa of candidate resources");
-   for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator SaIt = Sa.begin(); SaIt != Sa.end(); SaIt++)
-   {
-     NS_LOG_DEBUG("CSR index " << SaIt->first);
-     for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = SaIt->second.begin(); FrameIT != SaIt->second.end(); FrameIT++)
-       NS_LOG_DEBUG("Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);
-   }
-
-//   if (m_rnti == m_debugNode)
-//     std::cin.get();
-
-   uint32_t iterationsCounter = 0, nCSR;
-   double psschThresh = m_rsrpThreshold;
-
-   bool changeSelectedResources = false, pastTxError = false, SelWindowError = false;
-
-   for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator L1it = Sa.begin(); L1it != Sa.end(); L1it++)
-   {
-   //  NS_LOG_DEBUG("CSR index " << L1it->first);
-     if (L1it->first == CSRindex)
-     {
-      /* for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
-         NS_LOG_DEBUG("---Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);*/
-       std::list<SidelinkCommResourcePool::SubframeInfo>::iterator collisionIT = std::find(L1it->second.begin(), L1it->second.end(), checkSF);
-       if (collisionIT != L1it->second.end())
-         NS_LOG_DEBUG("Re-evaluation of resources did not detect any imminent collision");
-       else
-       {
-         NS_LOG_UNCOND("UE " << m_rnti << ": re-evaluation of resources detected an imminent collision at CSR " << L1it->first << " SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")");
-         changeSelectedResources = true;
-         SelWindowError = true;
-//         std::cin.get();
-         IT->second.m_currentV2XGrant = V2XSelectResources (currentSF.frameNo+1, currentSF.subframeNo+1, newPDB+m_slotDuration, pktParams.V2XPrsvp, pktParams.V2XMessageType, pktParams.V2XTrafficType, currentV2Xgrant.m_Cresel, pktParams.V2XPacketSize, pktParams.V2XReservationSize, ReEVALUATION); 
-//         IT->second.m_V2X_grant_fresh = true;
-       }
-     }
-    /* else
-     {
-       for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
-         NS_LOG_DEBUG("Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);  
-     }*/
-   }
-
-   if (!SelWindowError)
-   {
-     Sa_noPastTx = Mode2Step1_RemovePastTx (Sa, currentSF, currentV2Xgrant, newPDB);
-     if (ComputeResidualCSRs(Sa_noPastTx) == 0)
-     {
-       NS_LOG_UNCOND("Selection window (without past transmissions) is empty");
-       std::cin.get();
-     }
-
-     for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator L1it = Sa_noPastTx.begin(); L1it != Sa_noPastTx.end(); L1it++)
-     {
-     //  NS_LOG_DEBUG("CSR index " << L1it->first);
-       if (L1it->first == CSRindex)
-       {
-        /* for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
-           NS_LOG_DEBUG("---Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);*/
-         std::list<SidelinkCommResourcePool::SubframeInfo>::iterator collisionIT = std::find(L1it->second.begin(), L1it->second.end(), checkSF);
-         if (collisionIT != L1it->second.end())
-           NS_LOG_DEBUG("Re-evaluation of resources did not detect any imminent collision");
-         else
-         {
-           NS_LOG_UNCOND("UE " << m_rnti << ": re-evaluation of resources detected an imminent collision at CSR " << L1it->first << " SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")");
-           changeSelectedResources = true;
-           pastTxError = true;
-//         std::cin.get();
-           IT->second.m_currentV2XGrant = V2XSelectResources (currentSF.frameNo+1, currentSF.subframeNo+1, newPDB+m_slotDuration, pktParams.V2XPrsvp, pktParams.V2XMessageType, pktParams.V2XTrafficType, currentV2Xgrant.m_Cresel, pktParams.V2XPacketSize, pktParams.V2XReservationSize, ReEVALUATION); 
-//           IT->second.m_V2X_grant_fresh = true;
-         }
-       }
-      /* else
-       {
-         for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
-           NS_LOG_DEBUG("Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);  
-       }*/
-     }
-   }
-   if ( (!SelWindowError) && (!pastTxError) )
-   {
-     L1 = Mode2Step1 (Sa, currentSF, currentV2Xgrant, newPDB, NSubCh, L_SubCh, &iterationsCounter, &psschThresh, &nCSR, false);
-  //   std::cin.get();
-     // Print the list of CSRs (L1)
-     for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator L1it = L1.begin(); L1it != L1.end(); L1it++)
-     {
-     //  NS_LOG_DEBUG("CSR index " << L1it->first);
-       if (L1it->first == CSRindex)
-       {
-        /* for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
-           NS_LOG_DEBUG("---Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);*/
-         std::list<SidelinkCommResourcePool::SubframeInfo>::iterator collisionIT = std::find(L1it->second.begin(), L1it->second.end(), checkSF);
-         if (collisionIT != L1it->second.end())
-           NS_LOG_DEBUG("Re-evaluation of resources did not detect any imminent collision");
-         else
-         {
-           NS_LOG_UNCOND("UE " << m_rnti << ": re-evaluation of resources detected an imminent collision at CSR " << L1it->first << " SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")");
-           changeSelectedResources = true;
-  //         std::cin.get();
-           IT->second.m_currentV2XGrant = V2XSelectResources (currentSF.frameNo+1, currentSF.subframeNo+1, newPDB+m_slotDuration, pktParams.V2XPrsvp, pktParams.V2XMessageType, pktParams.V2XTrafficType, currentV2Xgrant.m_Cresel, pktParams.V2XPacketSize, pktParams.V2XReservationSize, ReEVALUATION); 
-//           IT->second.m_V2X_grant_fresh = true;
-         }
-       }
-      /* else
-       {
-         for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
-           NS_LOG_DEBUG("Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);  
-       }*/
-     }
-   }
-
-   UeReEvaluationInfo tmpStorage;
-   tmpStorage.nodeId = m_rnti;
-   tmpStorage.time = Simulator::Now ().GetSeconds ();
-   tmpStorage.ReEvalSF.frameNo = currentSF.frameNo;
-   tmpStorage.ReEvalSF.subframeNo = currentSF.subframeNo;
-   tmpStorage.LastReEvalSF.frameNo = currentV2Xgrant.m_ReEvaluationFrame;
-   tmpStorage.LastReEvalSF.subframeNo = currentV2Xgrant.m_ReEvaluationSubframe;
-   tmpStorage.CheckSF.frameNo = checkSF.frameNo;
-   tmpStorage.CheckSF.subframeNo = checkSF.subframeNo;
-   tmpStorage.CheckCSR = CSRindex;
-   tmpStorage.freshGrant = IT->second.m_V2X_grant_fresh;
-   if (changeSelectedResources)
-   {
-     tmpStorage.reSelection = true;  
-     if (SelWindowError)
-       tmpStorage.reSelectionType = 1;  
-     else if (pastTxError)
-       tmpStorage.reSelectionType = 2;  
-     else
-       tmpStorage.reSelectionType = 3;  
-   }
-   else
-   {
-     tmpStorage.reSelection = false;  
-     tmpStorage.reSelectionType = 0;  
-   }
-
-   NrV2XUeMac::ReEvaluationStats.push_back(tmpStorage);
-
-   if (changeSelectedResources)
-     IT->second.m_V2X_grant_fresh = true;
-
-   if (Simulator::Now ().GetSeconds() - NrV2XUeMac::prevPrintTime_reEvaluation > m_savingPeriod)
-   {
-     NrV2XUeMac::prevPrintTime_reEvaluation = Simulator::Now ().GetSeconds();
-     //Check if the UE is within the central 2km
-     std::ofstream ReEvalFileEXT;
-     ReEvalFileEXT.open (m_outputPath + "ReEvaluations_EXT.txt", std::ios_base::app);
-     std::ofstream ReEvalFile;
-     ReEvalFile.open (m_outputPath + "ReEvaluations.txt", std::ios_base::app);
-     for (std::vector<UeReEvaluationInfo>::iterator reEvalIT = NrV2XUeMac::ReEvaluationStats.begin(); reEvalIT != NrV2XUeMac::ReEvaluationStats.end(); reEvalIT++)
-     {
-       if (reEvalIT->freshGrant)
-         ReEvalFileEXT << "Fresh grant, ";
-       else
-         ReEvalFileEXT << "Non-fresh grant, "; 
-       ReEvalFileEXT << "UE " << reEvalIT->nodeId << ", Re-evaluation now: " << reEvalIT->time << ", at SF(" << reEvalIT->ReEvalSF.frameNo+1 << "," << reEvalIT->ReEvalSF.subframeNo+1 << "). Last re-evaluation at SF(" 
-       << reEvalIT->LastReEvalSF.frameNo  << "," << reEvalIT->LastReEvalSF.subframeNo  << "). Checking CSR index " << reEvalIT->CheckCSR << " at SF(" << reEvalIT->CheckSF.frameNo+1 << "," << reEvalIT->CheckSF.subframeNo+1 << "): ";
-       if (reEvalIT->reSelection)
-       {
-         ReEvalFileEXT << "Re-selection: ";
-         if (reEvalIT->reSelectionType == 1)
-           ReEvalFileEXT << "selection window" << std::endl;
-         else if (reEvalIT->reSelectionType == 2)
-           ReEvalFileEXT << "past-tx" << std::endl;
-         else
-           ReEvalFileEXT << "collision" << std::endl;  
-       }
-       else
-         ReEvalFileEXT << "Don't change" << std::endl;
-
-       ReEvalFile << (int) reEvalIT->freshGrant << "," << reEvalIT->nodeId << "," << reEvalIT->time << "," << reEvalIT->ReEvalSF.frameNo+1 << "," << reEvalIT->ReEvalSF.subframeNo+1 << "," << reEvalIT->LastReEvalSF.frameNo << "," 
-       << reEvalIT->LastReEvalSF.subframeNo  << "," << reEvalIT->CheckCSR << "," << reEvalIT->CheckSF.frameNo+1 << "," << reEvalIT->CheckSF.subframeNo+1 << "," << (int) reEvalIT->reSelection << "," << reEvalIT->reSelectionType << std::endl;
-     }
-     ReEvalFile.close();
-     ReEvalFileEXT.close();
-     NrV2XUeMac::ReEvaluationStats.clear();
-   }
-
-//   if (m_rnti == m_debugNode)
-//     std::cin.get();
-
-}
-
-
-void
-NrV2XUeMac::UnimoreUpdateReservation (std::map <uint32_t, PoolInfo>::iterator poolIt)
+SidelinkCommResourcePool::SubframeInfo
+NrV2XUeMac::UnimoreUpdateReservation (uint32_t frameNo, uint32_t subframeNo, uint16_t RRI_slots)
 {
   NS_LOG_FUNCTION(this);
 
-  poolIt->second.m_currentV2XGrant.m_Cresel--;
-  NS_LOG_INFO("Cresel decremented to: " << poolIt->second.m_currentV2XGrant.m_Cresel);
+  SidelinkCommResourcePool::SubframeInfo updatedSF;
 
-  uint32_t SFtemp = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
-  uint16_t RRI_slots = poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration;
+  uint32_t SFtemp = subframeNo;
   SFtemp--;
-  poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + RRI_slots) % 10 + 1;
-  poolIt->second.m_currentV2XGrant.m_nextReservedFrame --;
-  poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + RRI_slots) / 10) % 1024 +1;
-  SFtemp++;
+  subframeNo = (SFtemp + RRI_slots) % 10 + 1;
+  frameNo--;
+  frameNo = (frameNo + (SFtemp + RRI_slots) / 10) % 1024 +1;
+  
+  updatedSF.frameNo = frameNo;
+  updatedSF.subframeNo = subframeNo;
 
-  NS_LOG_UNCOND("Just (manually) updated reservation without data to Tx: SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ")");
-  m_UnutilizedReservations++;
-  //std::cin.get();
-
+  return updatedSF;
 }
 
 
@@ -2553,22 +2386,8 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 	 NS_LOG_DEBUG (this << " no BSR received. Assume no data to transfer. Valid grant? " << poolIt->second.m_V2X_grant_received);
          if (poolIt->second.m_V2X_grant_received) // If the UE has a valid reservation
          {
-           //NS_LOG_DEBUG("m_nextReservedFrame: " << poolIt->second.m_currentV2XGrant.m_nextReservedFrame);
-           /*if (poolIt->second.m_currentV2XGrant.m_Cresel > 0 && poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame == frameNo && poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe == subframeNo)
-           {
-             uint32_t SFtemp_ReEval = poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe;
-             uint16_t RRI_slots = poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration;
-             SFtemp_ReEval--;
-//           poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe = (SFtemp_ReEval + RRI_slots) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame --;
-//           poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) / 10) % 1024 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame = (poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame + (SFtemp_ReEval + RRI_slots) / 10) % 1024 + 1;       
-             SFtemp_ReEval++;
-             NS_LOG_INFO("Just updated re-evaluation without data to Tx: SF(" << poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame << "," << poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe << ")"); 
-             std::cin.get();
-           }*/
-           if (poolIt->second.m_currentV2XGrant.m_Cresel > 0 && poolIt->second.m_currentV2XGrant.m_nextReservedFrame == frameNo && poolIt->second.m_currentV2XGrant.m_nextReservedSubframe == subframeNo)
+           if (poolIt->second.m_currentV2XGrant.m_Cresel > 0 && poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_nextReservedFrame == frameNo
+               && poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_nextReservedSubframe == subframeNo)
            {
              // Update grant reselection parameters anyway, even if higher layers did not request Tx
              poolIt->second.m_currentV2XGrant.m_Cresel--;
@@ -2577,41 +2396,48 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
              { 
                poolIt->second.m_V2X_grant_received = false; //GRANT HAS EXPIRED, next time will be recomputed
              }
-             uint32_t SFtemp = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
-             uint16_t RRI_slots = poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration;
-             SFtemp--;
-     //        poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + RRI_slots) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_nextReservedFrame --;
-//             poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) / 10) % 1024 +1;
-             poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + RRI_slots) / 10) % 1024 +1;
-             SFtemp++;
 
-             //Adjust for having frames and subframes starting from index 1
-             if (poolIt->second.m_currentV2XGrant.m_nextReservedSubframe == 0)
+             for (std::map<uint16_t, V2XSchedulingInfo>::iterator grantsIT = poolIt->second.m_currentV2XGrant.m_grantTransmissions.begin(); grantsIT != poolIt->second.m_currentV2XGrant.m_grantTransmissions.end(); grantsIT++)
              {
-               poolIt->second.m_currentV2XGrant.m_nextReservedSubframe ++;
-             }
-             if (poolIt->second.m_currentV2XGrant.m_nextReservedFrame == 0)
-             {
-               poolIt->second.m_currentV2XGrant.m_nextReservedFrame ++;
-             }
+               SidelinkCommResourcePool::SubframeInfo updatedSF = UnimoreUpdateReservation (grantsIT->second.m_nextReservedFrame, grantsIT->second.m_nextReservedSubframe, poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration);
 
-             uint32_t SFtemp_ReEval = poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe;
-         //    uint16_t RRI_slots = poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration;
-             SFtemp_ReEval--;
-//           poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe = (SFtemp_ReEval + RRI_slots) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame --;
-//           poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) / 10) % 1024 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame = (poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame + (SFtemp_ReEval + RRI_slots) / 10) % 1024 + 1;       
-             SFtemp_ReEval++;
-             NS_LOG_INFO("Just updated re-evaluation without data to Tx: SF(" << poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame << "," << poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe << ")"); 
+               grantsIT->second.m_nextReservedFrame = updatedSF.frameNo;
+               grantsIT->second.m_nextReservedSubframe = updatedSF.subframeNo;
 
-             NS_LOG_UNCOND("Now: SF(" << frameNo << "," << subframeNo << "). Just updated reservation without data to Tx: SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ")");
-             poolIt->second.m_currentV2XGrant.m_EnableReEvaluation = true; // Re-evaluate next selected resource
-             m_UnutilizedReservations++;
-        //     std::cin.get();
+               updatedSF = UnimoreUpdateReservation (grantsIT->second.m_ReEvaluationFrame, grantsIT->second.m_ReEvaluationSubframe, poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration);
+ 
+               grantsIT->second.m_ReEvaluationFrame = updatedSF.frameNo;
+               grantsIT->second.m_ReEvaluationSubframe = updatedSF.subframeNo;
+
+               NS_LOG_UNCOND("Now: SF(" << frameNo << "," << subframeNo << "). Grant index " << grantsIT->first << ": just updated reservation without data to Tx: SF(" << grantsIT->second.m_nextReservedFrame << "," << grantsIT->second.m_nextReservedSubframe << ")");
+               NS_LOG_INFO("Now: SF(" << frameNo << "," << subframeNo << "). Grant index " << grantsIT->first << ": just updated re-evaluation without data to Tx: SF(" << grantsIT->second.m_ReEvaluationFrame << "," << grantsIT->second.m_ReEvaluationSubframe << ")"); 
+
+               if (grantsIT->first == 1)
+               {
+                 NS_LOG_INFO("This is initial transmission, enable re-evaluation check");
+                 grantsIT->second.m_EnableReEvaluation = true; // Re-evaluate next selected resource
+               }
+               else
+               { 
+                 SidelinkCommResourcePool::SubframeInfo previousSF, currSF;
+                 previousSF.frameNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[grantsIT->first-1].m_nextReservedFrame;
+                 previousSF.subframeNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[grantsIT->first-1].m_nextReservedSubframe;
+
+                 currSF.frameNo = grantsIT->second.m_nextReservedFrame;
+                 currSF.subframeNo = grantsIT->second.m_nextReservedSubframe;
+
+                 uint32_t slotsDiff = EvaluateSlotsDifference(previousSF, currSF, m_maxPDB/m_slotDuration);
+                 if (slotsDiff < 32)
+                   grantsIT->second.m_EnableReEvaluation = false; // Re-evaluate next selected resource
+                 else
+                   grantsIT->second.m_EnableReEvaluation = true; // Re-evaluate next selected resource
+                 NS_LOG_INFO("This is not the initial transmission. Previous SF(" << previousSF.frameNo << "," << previousSF.subframeNo << "), current SF(" << currSF.frameNo << "," 
+                 << currSF.subframeNo << "), slots difference = " << slotsDiff << ". Enabled ? " << grantsIT->second.m_EnableReEvaluation);
+               }
+             }
+//             NrV2XUeMac::ReservationsStats[m_rnti].UnutilizedReservations += 1;
+             NrV2XUeMac::ReservationsStats[m_rnti].UnutilizedReservations += poolIt->second.m_currentV2XGrant.m_grantTransmissions.size();
+//             std::cin.get();
            } //end if (poolIt->second.m_currentV2XGrant.m_Cresel > 0 && poolIt->second.m_currentV2XGrant.m_nextReservedFrame == frameNo && poolIt->second.m_currentV2XGrant.m_nextReservedSubframe == subframeNo)
          } //end if (poolIt->second.m_V2X_grant_received) 
        } //end if (itBsr == m_slBsrReceived.end () || (*itBsr).second.txQueueSize == 0) 
@@ -2623,7 +2449,6 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
            NS_LOG_INFO (this << " SL BSR size=" << m_slBsrReceived.size ());
            if (!poolIt->second.m_V2X_grant_received || ((*itBsr).second.V2XMessageType == 0x01 && (*itBsr).second.isNewV2X))
            {
-             m_CounterReselections++;
              (*itBsr).second.isNewV2X = false;
              V2XSidelinkGrant processedV2Xgrant;
              NS_LOG_DEBUG("TxQueue: " << (*itBsr).second.txQueueSize);
@@ -2635,6 +2460,10 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 //             std::cin.get();
 
              processedV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, itBsr->second.V2XReselectionCounter, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, COUNTER); 
+
+//             NrV2XUeMac::ReservationsStats[m_rnti].CounterReselections += 1;
+             NrV2XUeMac::ReservationsStats[m_rnti].CounterReselections += processedV2Xgrant.m_grantTransmissions.size();
+
              if ((*itBsr).second.V2XMessageType == 0x01)
              {
                processedV2Xgrant.m_Cresel = 0; 
@@ -2643,13 +2472,7 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
              poolIt->second.m_currentV2XGrant = processedV2Xgrant;
              poolIt->second.m_V2X_grant_received = true;
              poolIt->second.m_V2X_grant_fresh = true;            
-             if (m_rnti == 1 && false)
-             {
-               std::ofstream MAClog;
-               MAClog.open (m_outputPath + "MACDebug.txt", std::ios_base::app);   
-               MAClog << " V2X UE selected grant: PSCCH resource=" << (uint16_t) processedV2Xgrant.m_resPscch << ", rbStart=" << (uint16_t) processedV2Xgrant.m_rbStartPscch << ", rbLen=" << (uint16_t) processedV2Xgrant.m_rbLenPscch << ", mcs=" << (uint16_t) processedV2Xgrant.m_mcs << ", Cresel: " << processedV2Xgrant.m_Cresel << ", Next Reserved Tx: SF(" << processedV2Xgrant.m_nextReservedFrame << "," << processedV2Xgrant.m_nextReservedSubframe << ")" << "\r\n";
-               MAClog.close ();
-             }                       
+                 
          //    poolIt->second.m_currentV2XGrant.m_tbSize = m_amc->GetUlTbSizeFromMcs ((int) poolIt->second.m_currentV2XGrant.m_mcs, (int) poolIt->second.m_currentV2XGrant.m_rbLenPssch) / 8;
              NS_LOG_UNCOND("UE MAC: just made UE selection. Now: F:" << frameNo << ", SF:" << subframeNo);
            } //end if (!poolIt->second.m_V2X_grant_received || ((*itBsr).second.V2XMessageType == 0x01 && (*itBsr).second.isNewV2X))
@@ -2659,78 +2482,85 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 //       if (poolIt->second.m_V2X_grant_received && !(*itBsr).second.alreadyUESelected && !(itBsr == m_slBsrReceived.end () || (*itBsr).second.txQueueSize == 0) && aperiodicTraffic) // without frame boundary, now not needed
        if (poolIt->second.m_V2X_grant_received && !(*itBsr).second.alreadyUESelected && !(itBsr == m_slBsrReceived.end () || (*itBsr).second.txQueueSize == 0)) // without frame boundary, now not needed
        {
-//         bool latencyReselection = false, sizeReselection = false;
+         NS_LOG_INFO("Grant selection " << poolIt->second.m_currentV2XGrant.m_TxIndex << " out of " << poolIt->second.m_currentV2XGrant.m_grantTransmissions.size());
          SidelinkCommResourcePool::SubframeInfo SFpkt;
          SFpkt = SimulatorTimeToSubframe(Seconds(itBsr->second.V2XGenTime), m_slotDuration);
-         NS_LOG_DEBUG("Packet generated at: " << itBsr->second.V2XGenTime << " = SF(" << SFpkt.frameNo << "," << SFpkt.subframeNo << "), next reservation at SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ")");
 
-         double ReservationDelay = SubtractFrames(poolIt->second.m_currentV2XGrant.m_nextReservedFrame, SFpkt.frameNo, poolIt->second.m_currentV2XGrant.m_nextReservedSubframe, SFpkt.subframeNo)*m_slotDuration; //Expressed in ms
-         NS_LOG_DEBUG("Reservation delay = " << ReservationDelay << " ms, PDB = " << itBsr->second.V2XPdb << " ms");
+         NS_LOG_DEBUG("Packet generated at: " << itBsr->second.V2XGenTime << " = SF(" << SFpkt.frameNo << "," << SFpkt.subframeNo << "), next reservation at SF(" << poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_nextReservedSubframe << ")");
+
+         NS_LOG_INFO("Queue " <<  (*itBsr).second.txQueueSize);
+         double ReservationDelay = SubtractFrames(poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_nextReservedFrame, SFpkt.frameNo, poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_nextReservedSubframe, SFpkt.subframeNo)*m_slotDuration; //Expressed in ms
+         NS_LOG_DEBUG("Reservation delay (current tx) = " << ReservationDelay << " ms, PDB = " << itBsr->second.V2XPdb << " ms");
+
+         double ReTxReservationDelay;
+         if (poolIt->second.m_currentV2XGrant.m_TxIndex == 1 && poolIt->second.m_currentV2XGrant.m_TxNumber > 1)
+           ReTxReservationDelay = SubtractFrames(poolIt->second.m_currentV2XGrant.m_grantTransmissions[2].m_nextReservedFrame, SFpkt.frameNo, poolIt->second.m_currentV2XGrant.m_grantTransmissions[2].m_nextReservedSubframe, SFpkt.subframeNo)*m_slotDuration; //Expressed in ms
+         else 
+           ReTxReservationDelay = 0;
+         NS_LOG_DEBUG("Reservation delay (next tx) = " << ReTxReservationDelay << " ms, PDB = " << itBsr->second.V2XPdb << " ms");
 
          uint16_t TBlen_subCH, TBLen_RBs;
     	 poolIt->second.m_currentV2XGrant.m_tbSize = m_NRamc->GetSlSubchAndTbSizeFromMcs ((*itBsr).second.txQueueSize, poolIt->second.m_currentV2XGrant.m_mcs, m_nsubCHsize, m_BW_RBs, &TBlen_subCH, &TBLen_RBs) / 8;
          TB_RBs  = TBLen_RBs;
-         NS_LOG_DEBUG("Allocated " << poolIt->second.m_currentV2XGrant.m_tbSize << " B, with " <<  (*itBsr).second.txQueueSize << " B in the queue. PSSCH length = " << TBLen_RBs << " RBs, reservation is " << poolIt->second.m_currentV2XGrant.m_rbLenPssch << " RBs");
+         NS_LOG_DEBUG("Allocated " << poolIt->second.m_currentV2XGrant.m_tbSize << " B, with " <<  (*itBsr).second.txQueueSize << " B in the queue. PSSCH length = " << TBLen_RBs << " RBs, reservation is " << poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_rbLenPssch << " RBs");
 
 //         double NewPDB = std::floor( itBsr->second.V2XGenTime*1000 + itBsr->second.V2XPdb -Simulator::Now().GetMilliSeconds() );
-
+//        NS_LOG_DEBUG("PDB = " << itBsr->second.V2XPdb);
 //        std::cin.get();
 
-         if (ReservationDelay >itBsr->second.V2XPdb)
+         if (( (ReservationDelay > itBsr->second.V2XPdb) || (ReTxReservationDelay > itBsr->second.V2XPdb) ) && poolIt->second.m_currentV2XGrant.m_TxIndex == 1)
          {
            NS_ASSERT_MSG(aperiodicTraffic, "Periodic traffic should not generate latency reselections");
-           m_LatencyReselections++;
-           if (poolIt->second.m_currentV2XGrant.m_rbLenPssch < TBLen_RBs)
+//           NrV2XUeMac::ReservationsStats[m_rnti].LatencyReselections += 1;
+//           if (poolIt->second.m_currentV2XGrant.m_rbLenPssch < TBLen_RBs)
+           if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_rbLenPssch < TBLen_RBs)
            {
-             m_SizeReselections++; 
+//             NrV2XUeMac::ReservationsStats[m_rnti].SizeReselections += 1;
              NS_LOG_DEBUG("Now: Latency and Size Reselection");
            }
            else
              NS_LOG_DEBUG("Now: Latency Reselection");
-        //   std::cin.get();
+//           std::cin.get();
            V2XSidelinkGrant newV2Xgrant;
 
            if (m_oneShot)
            {
-             if (poolIt->second.m_currentV2XGrant.m_rbLenPssch < TBLen_RBs)
+             NS_FATAL_ERROR("One shot strategy is deprecated and not working");
+          /*   if (poolIt->second.m_currentV2XGrant.m_rbLenPssch < TBLen_RBs)
                newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, 1, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, LATENCYandSIZE); 
              else
                newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, 1, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, LATENCY); 
              m_tmpV2XGrant = poolIt->second.m_currentV2XGrant;
-             m_oneShotGrant = true;
-           }
-           else if (m_aggressive)
-           {
-             NS_FATAL_ERROR("Aggressive strategy has not been implemented yet");
-           }
-           else if (m_submissive)
-           {
-             NS_FATAL_ERROR("Submissive strategy has not been implemented yet");
+             m_oneShotGrant = true;*/
            }
            else 
            {
-            if (poolIt->second.m_currentV2XGrant.m_rbLenPssch < TBLen_RBs)
+             if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_rbLenPssch < TBLen_RBs)
+             {
                newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, itBsr->second.V2XReselectionCounter, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, LATENCYandSIZE); 
+               NrV2XUeMac::ReservationsStats[m_rnti].SizeReselections += newV2Xgrant.m_grantTransmissions.size();
+             }
              else
                newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, itBsr->second.V2XReselectionCounter, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, LATENCY); 
+             NrV2XUeMac::ReservationsStats[m_rnti].LatencyReselections += newV2Xgrant.m_grantTransmissions.size();
            }
            poolIt->second.m_V2X_grant_fresh = true;
            poolIt->second.m_currentV2XGrant = newV2Xgrant;
          }
-         else if (poolIt->second.m_currentV2XGrant.m_rbLenPssch < TBLen_RBs)
+         else if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_rbLenPssch < TBLen_RBs && poolIt->second.m_currentV2XGrant.m_TxIndex == 1)
          {
          //  NS_ASSERT_MSG(aperiodicTraffic, "Periodic traffic should not generate size reselections");
            NS_LOG_DEBUG("Now: Size Reselection");
          //  std::cin.get();
-           m_SizeReselections++; 
+//           NrV2XUeMac::ReservationsStats[m_rnti].SizeReselections += 1;
            V2XSidelinkGrant newV2Xgrant;
-           SidelinkCommResourcePool::SubframeInfo nextReservedSF; 
-           nextReservedSF.frameNo = poolIt->second.m_currentV2XGrant.m_nextReservedFrame;
-           nextReservedSF.subframeNo = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
+       //    SidelinkCommResourcePool::SubframeInfo nextReservedSF; 
+       //    nextReservedSF.frameNo = poolIt->second.m_currentV2XGrant.m_nextReservedFrame;
+       //    nextReservedSF.subframeNo = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
 
            if (m_oneShot)
            {
-             newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, 1, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, SIZE); 
+           /*  newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, 1, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, SIZE); 
            
              NS_LOG_DEBUG("New reservation at SF(" << newV2Xgrant.m_nextReservedFrame << "," << newV2Xgrant.m_nextReservedSubframe 
              << "). Old reservation at SF(" << nextReservedSF.frameNo << "," << nextReservedSF.subframeNo << ")");
@@ -2739,7 +2569,7 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
              if ( SubtractFrames(newV2Xgrant.m_nextReservedFrame, frameNo, newV2Xgrant.m_nextReservedSubframe, subframeNo) >= SubtractFrames(nextReservedSF.frameNo, frameNo, nextReservedSF.subframeNo, subframeNo) )
              {
                NS_LOG_INFO("Manually update the current grant");
-               UnimoreUpdateReservation (poolIt);
+               NONONONONOUnimoreUpdateReservation (poolIt); //Now deprecated, does not work any more
 
                nextReservedSF.frameNo = poolIt->second.m_currentV2XGrant.m_nextReservedFrame;
                nextReservedSF.subframeNo = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
@@ -2750,11 +2580,12 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
              }
 
              m_tmpV2XGrant = poolIt->second.m_currentV2XGrant;
-             m_oneShotGrant = true;
+             m_oneShotGrant = true;*/
            }
            else 
            {
              newV2Xgrant = V2XSelectResources (frameNo, subframeNo, itBsr->second.V2XPdb, itBsr->second.V2XPrsvp, itBsr->second.V2XMessageType, itBsr->second.V2XTrafficType, itBsr->second.V2XReselectionCounter, itBsr->second.V2XPacketSize, itBsr->second.V2XReservationSize, SIZE); 
+             NrV2XUeMac::ReservationsStats[m_rnti].SizeReselections += newV2Xgrant.m_grantTransmissions.size(); 
            }
 
            poolIt->second.m_V2X_grant_fresh = true;
@@ -2769,15 +2600,21 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 
          //std::cin.get();
 
-         NS_LOG_DEBUG("Re-eval next selected resource? " << poolIt->second.m_currentV2XGrant.m_EnableReEvaluation << ". Re-eval at SF(" << poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame << "," << poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe << "). Selected at SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ")");
+         NS_LOG_DEBUG("Re-eval next selected resource? " << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation 
+         << ". Re-eval at SF(" << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationFrame << "," << 
+         poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe << "). Selected at SF(" << 
+         poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame << "," << 
+         poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe << ")");
+
       //   std::cin.get();
-         if (m_reEvaluation && SubtractFrames(poolIt->second.m_currentV2XGrant.m_nextReservedFrame, frameNo, poolIt->second.m_currentV2XGrant.m_nextReservedSubframe, subframeNo) >= GetTproc1 (m_numerologyIndex))
+         if (m_reEvaluation && SubtractFrames(poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame, frameNo, 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe, subframeNo) >= GetTproc1 (m_numerologyIndex))
          {
-           if (poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame == frameNo && poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe == subframeNo)
+           if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationFrame == frameNo && poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe == subframeNo)
            {
              NS_LOG_DEBUG("Re-evaluation now SF(" << frameNo << "," << subframeNo << ")");
 //            if (m_reEvaluation && poolIt->second.m_V2X_grant_fresh)
-             if (poolIt->second.m_currentV2XGrant.m_EnableReEvaluation)
+             if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation)
              {
 //               std::cin.get();
 //               ReEvaluateResources(poolIt->second.m_currentV2XGrant, itBsr->second);
@@ -2785,11 +2622,12 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
              }
 
            }
-           else if (SubtractFrames(poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame, frameNo, poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe, subframeNo) >= 0 && m_allSlotsReEvaluation)
+           else if (SubtractFrames(poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationFrame, frameNo, 
+                    poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe, subframeNo) >= 0 && m_allSlotsReEvaluation)
            {
              NS_LOG_DEBUG("Re-evaluation now SF(" << frameNo << "," << subframeNo << ")");
 //            if (m_reEvaluation && poolIt->second.m_V2X_grant_fresh)
-             if (poolIt->second.m_currentV2XGrant.m_EnableReEvaluation)
+             if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation)
              {
 //               std::cin.get();
 //               ReEvaluateResources(poolIt->second.m_currentV2XGrant, itBsr->second);
@@ -2799,24 +2637,26 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
          }
          else
          {
-           if(SubtractFrames(poolIt->second.m_currentV2XGrant.m_nextReservedFrame, frameNo, poolIt->second.m_currentV2XGrant.m_nextReservedSubframe, subframeNo) < GetTproc1 (m_numerologyIndex))
+           if(SubtractFrames(poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame, frameNo,
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe, subframeNo) < GetTproc1 (m_numerologyIndex))
            {
              NS_LOG_DEBUG("Packet arrived too late for re-evaluation");
-       //      if (poolIt->second.m_currentV2XGrant.m_EnableReEvaluation)
-       //      {
-       //        NS_LOG_UNCOND("Eccolo");
-       //        std::cin.get();
-       //      }
            }
-
+           else
+           {
+             NS_LOG_DEBUG("Re-evaluation not enabled");
+           }
          }
-         if (poolIt->second.m_currentV2XGrant.m_nextReservedFrame == frameNo && poolIt->second.m_currentV2XGrant.m_nextReservedSubframe == subframeNo)
+
+         if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame == frameNo &&
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe == subframeNo)
          {
            NS_LOG_INFO("Received grant for SF(" << frameNo << ", " << subframeNo << ")");
 
            m_updateReservation = true;
            m_validReservation = true; 
-           m_Reservations++;
+           NrV2XUeMac::ReservationsStats[m_rnti].Reservations += 1;
+//           NrV2XUeMac::ReservationsStats[m_rnti].Reservations += poolIt->second.m_currentV2XGrant.m_grantTransmissions.size();
 
            if (m_oneShotGrant)
              m_updateReservation = false;
@@ -2834,61 +2674,73 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 	   }*/
 
 	   NS_LOG_DEBUG("Current SF(" << frameNo << "," << subframeNo << ")");
-	   NS_LOG_DEBUG("Send the packet at SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ")");
+	   NS_LOG_DEBUG("Send the packet at SF(" << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame << "," 
+           << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe << ")");
 
 	   (*itBsr).second.alreadyUESelected = true; //FIXME please change the name of this member
            //Compute the TB size
            uint16_t TBlen_subCH, TBLen_RBs;
     	   poolIt->second.m_currentV2XGrant.m_tbSize = m_NRamc->GetSlSubchAndTbSizeFromMcs ((*itBsr).second.txQueueSize, poolIt->second.m_currentV2XGrant.m_mcs, m_nsubCHsize, m_BW_RBs, &TBlen_subCH, &TBLen_RBs) / 8;
  	//   poolIt->second.m_currentV2XGrant.m_tbSize = m_amc->GetUlTbSizeFromMcs ((int) poolIt->second.m_currentV2XGrant.m_mcs, (int) poolIt->second.m_currentV2XGrant.m_rbLenPssch) / 8;
-           NS_LOG_DEBUG("Allocated " << poolIt->second.m_currentV2XGrant.m_tbSize << " B, with " <<  (*itBsr).second.txQueueSize << " B in the queue. PSSCH length = " << TBLen_RBs << " RBs, reservation is " << poolIt->second.m_currentV2XGrant.m_rbLenPssch << " RBs");
+           NS_LOG_DEBUG("Allocated " << poolIt->second.m_currentV2XGrant.m_tbSize << " B, with " <<  (*itBsr).second.txQueueSize << " B in the queue. PSSCH length = " << TBLen_RBs << " RBs, reservation is " << poolIt->second.m_currentV2XGrant.m_grantTransmissions[1].m_rbLenPssch << " RBs");
             
            TxPacketInfo tmpInfo;
            tmpInfo.packetID = itBsr->second.V2XPacketID;
            tmpInfo.txTime = Simulator::Now().GetSeconds();
-           tmpInfo.selTrigger = poolIt->second.m_currentV2XGrant.m_SelectionTrigger;
+           tmpInfo.selTrigger = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_SelectionTrigger;
 
 	   if (poolIt->second.m_V2X_grant_fresh)	
    	   {	
 	     NS_LOG_INFO("Fresh Grant");
-	     // poolIt->second.m_v2xTx = poolIt->second.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, poolIt->second.m_currentV2XGrant.m_rbStartPscch, poolIt->second.m_currentV2XGrant.m_rbStartPssch, poolIt->second.m_currentV2XGrant.m_rbLenPssch, poolIt->second.m_currentV2XGrant.m_subframeInitialTx, poolIt->second.m_currentV2XGrant.m_SFGap);
-             poolIt->second.m_v2xTx = poolIt->second.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, poolIt->second.m_currentV2XGrant.m_rbStartPscch, poolIt->second.m_currentV2XGrant.m_rbStartPssch, poolIt->second.m_currentV2XGrant.m_rbLenPssch, poolIt->second.m_currentV2XGrant.m_rbLenPscch, poolIt->second.m_currentV2XGrant.m_nextReservedFrame, poolIt->second.m_currentV2XGrant.m_nextReservedSubframe, poolIt->second.m_currentV2XGrant.m_SFGap);
+             poolIt->second.m_v2xTx = poolIt->second.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbStartPscch, 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbStartPssch, poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch, 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPscch, poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame, 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe, 0);
 
-             if (poolIt->second.m_currentV2XGrant.m_EnableReEvaluation)
+             if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation) 
              {
+               // add check if its second transmission, second transmission is announced
                NS_LOG_DEBUG("Packet " << itBsr->second.V2XPacketID << " transmitted without being announced");
                tmpInfo.announced = false;
+               poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation = false;
 //               PKTsType << itBsr->second.V2XPacketID << ",0," << poolIt->second.m_currentV2XGrant.m_SelectionTrigger << "," << Simulator::Now().GetSeconds() << std::endl;
              }
              else
              {
                NS_LOG_DEBUG("Packet " << itBsr->second.V2XPacketID << " transmitted after being announced");
                tmpInfo.announced = true;
+               poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation = true;
 //               PKTsType << itBsr->second.V2XPacketID << ",1," << poolIt->second.m_currentV2XGrant.m_SelectionTrigger << "," << Simulator::Now().GetSeconds() << std::endl;
-               NS_FATAL_ERROR("Newly selected packets should always be re-evaluated");
+               NS_ASSERT_MSG(poolIt->second.m_currentV2XGrant.m_TxIndex != 1, "Newly selected packets should always be re-evaluated");
              }
 //             std::cin.get();
-	     poolIt->second.m_V2X_grant_fresh = false; //we have just used this grant for the first time 
-             poolIt->second.m_currentV2XGrant.m_EnableReEvaluation = false; 
+             if (poolIt->second.m_currentV2XGrant.m_TxIndex == poolIt->second.m_currentV2XGrant.m_TxNumber)
+               poolIt->second.m_V2X_grant_fresh = false; //we have just used this grant for the first time 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation = false; 
 	   }
            else // If the packet respects the reservation
 	   {
              NS_LOG_INFO("Reused Grant, now: SF(" << frameNo << "," << subframeNo << ")");
-             poolIt->second.m_v2xTx = poolIt->second.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, poolIt->second.m_currentV2XGrant.m_rbStartPscch, poolIt->second.m_currentV2XGrant.m_rbStartPssch, poolIt->second.m_currentV2XGrant.m_rbLenPssch, poolIt->second.m_currentV2XGrant.m_rbLenPscch, poolIt->second.m_currentV2XGrant.m_nextReservedFrame, poolIt->second.m_currentV2XGrant.m_nextReservedSubframe, poolIt->second.m_currentV2XGrant.m_SFGap);
-             if (poolIt->second.m_currentV2XGrant.m_EnableReEvaluation)
+             poolIt->second.m_v2xTx = poolIt->second.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbStartPscch,
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbStartPssch, poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch, 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPscch, poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame, 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe, 0);
+             if (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation)
              {
                NS_LOG_DEBUG("Packet " << itBsr->second.V2XPacketID << " transmitted without being announced");
                tmpInfo.announced = false;
+               poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_announced = false;
 //               PKTsType << itBsr->second.V2XPacketID << ",0," << poolIt->second.m_currentV2XGrant.m_SelectionTrigger << "," << Simulator::Now().GetSeconds() << std::endl;
              }
              else
              {
                NS_LOG_DEBUG("Packet " << itBsr->second.V2XPacketID << " transmitted after being announced");
                tmpInfo.announced = true;
+               poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_announced = true;
 //               PKTsType << itBsr->second.V2XPacketID << ",1," << poolIt->second.m_currentV2XGrant.m_SelectionTrigger << "," << Simulator::Now().GetSeconds() << std::endl;
              }
  //            std::cin.get();
-             poolIt->second.m_currentV2XGrant.m_EnableReEvaluation = false; 
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation = false; 
 	   }
 
        /*    NrV2XUeMac::TxPacketsStats.push_back(tmpInfo);
@@ -2910,35 +2762,33 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
            {
     	     if (poolIt->second.m_currentV2XGrant.m_Cresel > 0)
              {
-               poolIt->second.m_currentV2XGrant.m_Cresel--;
+               if (poolIt->second.m_currentV2XGrant.m_TxIndex == 1)
+                 poolIt->second.m_currentV2XGrant.m_Cresel--;
                //NS_LOG_DEBUG("Decreasing the reselection counter. Node " << m_rnti);
            //    std::cin.get();              
              }
-	     uint32_t SFtemp = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
-             uint16_t RRI_slots = poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration;
-             SFtemp--;
-//             poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + RRI_slots) % 10 + 1;
-	     poolIt->second.m_currentV2XGrant.m_nextReservedFrame --;
-//	     poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) / 10) % 1024 + 1;
-	     poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + RRI_slots) / 10) % 1024 + 1;
-	     SFtemp++;
 
-             uint32_t SFtemp_ReEval = poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe;
-          //   uint16_t RRI_slots = poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration;
-             SFtemp_ReEval--;
-//           poolIt->second.m_currentV2XGrant.m_nextReservedSubframe = (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe = (SFtemp_ReEval + RRI_slots) % 10 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame --;
-//           poolIt->second.m_currentV2XGrant.m_nextReservedFrame = (poolIt->second.m_currentV2XGrant.m_nextReservedFrame + (SFtemp + poolIt->second.m_currentV2XGrant.m_RRI) / 10) % 1024 + 1;
-             poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame = (poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame + (SFtemp_ReEval + RRI_slots) / 10) % 1024 + 1;       
-             SFtemp_ReEval++;
-             poolIt->second.m_currentV2XGrant.m_EnableReEvaluation = false;
-             NS_LOG_INFO("Just updated re-evaluation: SF(" << poolIt->second.m_currentV2XGrant.m_ReEvaluationFrame << "," << poolIt->second.m_currentV2XGrant.m_ReEvaluationSubframe << ")"); 
+             SidelinkCommResourcePool::SubframeInfo updatedSF = UnimoreUpdateReservation (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame,
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe, poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration);
+
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame = updatedSF.frameNo;
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe = updatedSF.subframeNo;
+
+             updatedSF = UnimoreUpdateReservation (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationFrame,
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe, poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration);
+
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationFrame = updatedSF.frameNo;
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe = updatedSF.subframeNo;
+
+             poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_EnableReEvaluation = false;
+
+             NS_LOG_INFO("Just updated re-evaluation: SF(" << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationFrame << "," 
+             << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe << ")"); 
              //Re-evaluation should not be updated since it is performed only on selected resources
            }
 
-           NS_LOG_UNCOND("Just updated reservation SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ")");
+           NS_LOG_UNCOND("Just updated reservation SF(" << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame << "," 
+           << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe << ")");
 
 	   for (std::list<SidelinkCommResourcePool::V2XSidelinkTransmissionInfo>::iterator txIt = poolIt->second.m_v2xTx.begin (); txIt != poolIt->second.m_v2xTx.end (); txIt++) 
 	   {		
@@ -2946,7 +2796,7 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 	     txIt->subframe.subframeNo++;
            }
            NS_LOG_INFO("poolIt->second.m_currentV2XGrant.m_Cresel: " << poolIt->second.m_currentV2XGrant.m_Cresel);
-           if (poolIt->second.m_currentV2XGrant.m_Cresel == 0 ) //TODO FIXME 
+           if ((poolIt->second.m_currentV2XGrant.m_Cresel == 0) && (poolIt->second.m_currentV2XGrant.m_TxIndex == poolIt->second.m_currentV2XGrant.m_grantTransmissions.size() )) //TODO FIXME 
            {  
              if (m_evalKeepProb->GetValue() > (1-m_keepProbability))
              {
@@ -2975,49 +2825,71 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
        if (allocIter != poolIt->second.m_v2xTx.end() && allocIter->subframe.frameNo == frameNo && allocIter->subframe.subframeNo  == subframeNo)
        {
          NS_LOG_UNCOND("Now: " << Simulator::Now().GetSeconds()*1000 << " ms: Ok, now I should transmit data, Frame no. " << frameNo << ", Subframe no. " << subframeNo);
-         if (m_rnti == 1 && false)
-         { 
-           std::cout << "RNTI 1 is about to transmit\r\n";
-           std::ofstream MACDebug; 
-           MACDebug.open (m_outputPath + "MACDebug.txt", std::ios_base::app);
-           MACDebug << "Allocated SF(" << ((*allocIter).subframe.frameNo)%1024 << "," << ((*allocIter).subframe.subframeNo)%10 << "), Current SF(" << frameNo << "," << subframeNo << ")" << "\r\n";
-           MACDebug.close ();
-         }
-         //create SCI message
 	 NistV2XSciListElement_s sci1;
 	 sci1.m_rnti = m_rnti;
+         sci1.m_genTime = itBsr->second.V2XGenTime;
          sci1.m_packetID = itBsr->second.V2XPacketID;
+         sci1.m_announcedTB = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_announced;
          // The m_validReservation flag triggers the packet drop down at PHY layer. its content is conveyed at PHY layer by the SCI hopping field
          // The hopping field is unused. TODO create a new dedicated SCI field.
          if (m_validReservation)
          {
            sci1.m_hopping = 0x01; 
-           m_TotalTransmissions++;
+           NrV2XUeMac::ReservationsStats[m_rnti].TotalTransmissions += 1;
          }
          else
          {
            sci1.m_hopping = 0x00;
          }
-	 //sci1.m_resPscch = poolIt->second.m_currentV2XGrant.m_resPscch;
-         sci1.m_rbStartPssch = poolIt->second.m_currentV2XGrant.m_rbStartPssch;
-         sci1.m_rbLenPssch = poolIt->second.m_currentV2XGrant.m_rbLenPssch;
+
+         sci1.m_rbStartPssch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbStartPssch;
+         sci1.m_rbLenPssch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch;
  	 sci1.m_rbLenPssch_TB = TB_RBs;
+         NS_ASSERT_MSG(poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch >= TB_RBs, "Reservation length must be greater than the TB before the transmission");
+         sci1.m_rbStartPscch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbStartPscch;
+         sci1.m_rbLenPscch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPscch;
+	 sci1.m_reservedSubframe.frameNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedFrame;
+         sci1.m_reservedSubframe.subframeNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_nextReservedSubframe;
 
-         NS_ASSERT_MSG(poolIt->second.m_currentV2XGrant.m_rbLenPssch >= TB_RBs, "Reservation length must be greater than the TB before the transmission");
+         NrV2XUeMac::ReservationsStats[m_rnti].UnutilizedSubchannelsRatio.push_back((double) (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch - TB_RBs) / poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch);
 
-//         m_UnutilizedSubchannels += (poolIt->second.m_currentV2XGrant.m_rbLenPssch - TB_RBs)/m_nsubCHsize;
-//         m_ReservedSubchannels += poolIt->second.m_currentV2XGrant.m_rbLenPssch/m_nsubCHsize;
+    //     NS_LOG_INFO("Used RBs = " << TB_RBs << ", reserved RBs = " << poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch <<
+    //     ", unused RBs = " << (poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_rbLenPssch - TB_RBs));
 
-         m_UnutilizedSubchannels += (poolIt->second.m_currentV2XGrant.m_rbLenPssch - TB_RBs); //Unused RBs actually FIXME
-         m_ReservedSubchannels += poolIt->second.m_currentV2XGrant.m_rbLenPssch;
+         sci1.m_selectionTrigger = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_SelectionTrigger;
+          //ReTransmissions stuff
+         sci1.m_TxIndex = poolIt->second.m_currentV2XGrant.m_TxIndex;
+         sci1.m_TxNumber = poolIt->second.m_currentV2XGrant.m_TxNumber;
+         sci1.m_announceNextTxion = false;
+         if ((sci1.m_TxIndex < sci1.m_TxNumber) && !(poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_EnableReEvaluation))
+         {
+           sci1.m_announceNextTxion = true;
+           sci1.m_secondSubframe.frameNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_nextReservedFrame;
+           sci1.m_secondSubframe.subframeNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_nextReservedSubframe;
+           sci1.m_secondRbStartPssch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_rbStartPssch;
+           sci1.m_secondRbLenPssch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_rbLenPssch;
+           sci1.m_secondRbStartPscch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_rbStartPscch;
+           sci1.m_secondRbLenPscch = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_rbLenPscch;
 
-         /*Maybe not really needed*/
-         sci1.m_rbStartPscch = poolIt->second.m_currentV2XGrant.m_rbStartPscch;
-         sci1.m_rbLenPscch = poolIt->second.m_currentV2XGrant.m_rbLenPscch;
+           //Now compute next TB re-transmission SF
+           sci1.m_secondReservedSubframe.frameNo = sci1.m_secondSubframe.frameNo;
+           sci1.m_secondReservedSubframe.subframeNo = sci1.m_secondSubframe.subframeNo;
+
+           SidelinkCommResourcePool::SubframeInfo updatedSF = UnimoreUpdateReservation (sci1.m_secondReservedSubframe.frameNo, sci1.m_secondReservedSubframe.subframeNo, poolIt->second.m_currentV2XGrant.m_RRI/m_slotDuration);
+
+           sci1.m_secondReservedSubframe.frameNo = updatedSF.frameNo;
+           sci1.m_secondReservedSubframe.subframeNo = updatedSF.subframeNo;
+
+           sci1.m_timeDiff = EvaluateSlotsDifference(sci1.m_secondReservedSubframe, sci1.m_reservedSubframe, m_maxPDB/m_slotDuration)*m_slotDuration;
+           NS_LOG_DEBUG("Announcing also the re-tranmissions resources. Time offset = " << sci1.m_timeDiff << ", slots difference = " << sci1.m_timeDiff/m_slotDuration);
+           poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_announced = true;
+           //sci1.m_secondReservedSubframe.frameNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_nextReservedFrame;
+           //sci1.m_secondReservedSubframe.subframeNo = poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex+1].m_nextReservedSubframe;
+         }
+
  	 sci1.m_mcs = poolIt->second.m_currentV2XGrant.m_mcs;
 	 sci1.m_tbSize = poolIt->second.m_currentV2XGrant.m_tbSize;
 	 sci1.m_groupDstId = (poolIt->first & 0xFF);
-         sci1.m_SFGap = poolIt->second.m_currentV2XGrant.m_SFGap;
          if (poolIt->second.m_currentV2XGrant.m_Cresel > 0)
          {
             sci1.m_reservation = poolIt->second.m_currentV2XGrant.m_RRI;
@@ -3031,10 +2903,6 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
          currentSF.frameNo = frameNo -1;  //Current time is always 1 frame and 1 subframe ahead
          currentSF.subframeNo = subframeNo -1;
 
-	 sci1.m_reservedSubframe.frameNo = poolIt->second.m_currentV2XGrant.m_nextReservedFrame;
-         sci1.m_reservedSubframe.subframeNo = poolIt->second.m_currentV2XGrant.m_nextReservedSubframe;
-
-
          currentSF.frameNo ++;
          currentSF.subframeNo ++;
          sci1.m_receivedSubframe.frameNo = currentSF.frameNo;
@@ -3045,32 +2913,53 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
          Ptr<SciV2XLteControlMessage> msg = Create<SciV2XLteControlMessage> ();
 
          // Print the MAC debugger counters (for ETSI traffic)
-         if (Simulator::Now ().GetSeconds() - m_prevPrintTime > m_savingPeriod)
+         if (Simulator::Now ().GetSeconds() - NrV2XUeMac::prevPrintTime_reservations > m_savingPeriod)
          {
-           m_prevPrintTime = Simulator::Now ().GetSeconds();
-           std::ofstream DebugTMP; 
-           DebugTMP.open (m_outputPath + "ReservationsDebug.txt", std::ios_base::app);
-           DebugTMP << m_rnti << "," << Simulator::Now ().GetSeconds() << "," <<  m_UnutilizedSubchannels << "," << m_ReservedSubchannels << "," << m_UnutilizedReservations << "," << m_Reservations << "," << m_LatencyReselections << ","
-           << m_SizeReselections << "," << m_CounterReselections << "," << m_TotalTransmissions << std::endl;
-           DebugTMP.close ();
-           m_UnutilizedSubchannels = 0;
-           m_ReservedSubchannels = 0;
-           m_UnutilizedReservations = 0;
-           m_Reservations = 0;
-           m_LatencyReselections = 0;
-           m_SizeReselections = 0;
-           m_CounterReselections = 0;
-           m_TotalTransmissions = 0;
-         }
+           NrV2XUeMac::prevPrintTime_reservations = Simulator::Now ().GetSeconds();
+           std::ofstream ResLOG; 
+           ResLOG.open (m_outputPath + "ReservationsLog.txt", std::ios_base::app);
+           for (std::map<uint32_t, ReservationsInfo>::iterator ResIT = NrV2XUeMac::ReservationsStats.begin(); ResIT != NrV2XUeMac::ReservationsStats.end(); ResIT++)
+           {
+             double AvgUSR = 0;
+             for (std::vector<double>::iterator USit = ResIT->second.UnutilizedSubchannelsRatio.begin(); USit != ResIT->second.UnutilizedSubchannelsRatio.end(); USit++)
+             {
+               AvgUSR += (*USit);
+             }  
+             if (ResIT->second.UnutilizedSubchannelsRatio.size() > 0)
+               AvgUSR /= ResIT->second.UnutilizedSubchannelsRatio.size();
+             else
+               AvgUSR = -1;
 
+             ResLOG << ResIT->first << "," << Simulator::Now ().GetSeconds() << ","  << AvgUSR << "," << ResIT->second.UnutilizedReservations << "," << ResIT->second.Reservations 
+             << "," << ResIT->second.LatencyReselections << "," << ResIT->second.SizeReselections << "," << ResIT->second.CounterReselections << "," << ResIT->second.TotalTransmissions << std::endl;
+
+             ResIT->second.UnutilizedSubchannelsRatio.clear();
+             ResIT->second.UnutilizedReservations = 0;
+             ResIT->second.Reservations = 0;
+             ResIT->second.LatencyReselections = 0;
+             ResIT->second.SizeReselections = 0;
+             ResIT->second.CounterReselections = 0;
+             ResIT->second.TotalTransmissions = 0;
+           }
+           ResLOG.close ();
+           //std::cin.get();
+         }
 
          if (!m_updateReservation)
          {
            sci1.m_reservation = 0; // Notify other neighbors that these resource won't be reserved
          }
 	 NS_LOG_DEBUG("SCI >> Node ID: " << nodeId << " transmitting packet " << sci1.m_packetID  << " at SF(" << sci1.m_receivedSubframe.frameNo << ", " <<  sci1.m_receivedSubframe.subframeNo << ") Cresel: " << sci1.m_CreselRx << " rbStart PSSCH: " << sci1.m_rbStartPssch << " rbLen PSSCH (reserved): " << sci1.m_rbLenPssch << " rbLen PSSCH (used): " 
-         << sci1.m_rbLenPssch_TB << " rbStart PSCCH: " << sci1.m_rbStartPscch << " rbLen PSCCH: " << sci1.m_rbLenPscch << " Reserved SF(" <<  sci1.m_reservedSubframe.frameNo << ", " 
-         << sci1.m_reservedSubframe.subframeNo << ") Reservation: " << sci1.m_reservation);
+         << sci1.m_rbLenPssch_TB << " rbStart PSCCH: " << sci1.m_rbStartPscch << " rbLen PSCCH: " << sci1.m_rbLenPscch << " announcing reservation at SF(" <<  sci1.m_reservedSubframe.frameNo << ", " 
+         << sci1.m_reservedSubframe.subframeNo << ") Reservation: " << sci1.m_reservation << " ms. Transmission " << sci1.m_TxIndex << " out of " << sci1.m_TxNumber << ". Announced ? " << sci1.m_announcedTB);
+         if (sci1.m_announceNextTxion)
+         {
+           NS_LOG_DEBUG("SCI >> Node ID: " << nodeId << " also announcing reservation at SF(" << sci1.m_secondSubframe.frameNo << "," << sci1.m_secondSubframe.subframeNo<< ")  rbStart PSSCH: " << 
+           sci1.m_secondRbStartPssch << " rbLen PSSCH (reserved): " << sci1.m_secondRbLenPssch << " rbStart PSCCH: " << sci1.m_secondRbStartPscch << " rbLen PSCCH " << sci1.m_secondRbLenPscch);
+           NS_LOG_DEBUG("SCI >> Node ID: " << nodeId << " also announcing reservation at SF(" << sci1.m_secondReservedSubframe.frameNo << "," << sci1.m_secondReservedSubframe.subframeNo<< ")  rbStart PSSCH: " << 
+           sci1.m_secondRbStartPssch << " rbLen PSSCH (reserved): " << sci1.m_secondRbLenPssch << " rbStart PSCCH: " << sci1.m_secondRbStartPscch << " rbLen PSCCH " << sci1.m_secondRbLenPscch);
+
+         }
 
       //   if (m_rnti==m_debugNode)
       //   std::cin.get();
@@ -3099,19 +2988,17 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 	       //future modifications)
 	       if ( ((*itBsr).second.statusPduSize > 0) || ((*itBsr).second.retxQueueSize > 0) || ((*itBsr).second.txQueueSize > 0))
 	       {
-		 //We have data to send in the PSSCH, notify the RRC to start/continue sending SLSS if appropriate
-                 //   if (m_validReservation){
               	 m_slHasDataToTx = true;
 		 m_cmacSapUser->NotifyMacHasSlDataToSend();
-                 //   }
-                 // else
-              	 //   m_slHasDataToTx = false;
+
 		 NS_ASSERT ((*itBsr).second.statusPduSize == 0 && (*itBsr).second.retxQueueSize == 0);
  		 //similar code as uplink transmission
 		 uint32_t bytesForThisLc = poolIt->second.m_currentV2XGrant.m_tbSize;  // Notifying the number of bytes that can be transmitted
-		 NS_LOG_LOGIC (this << " RNTI " << m_rnti << " Sidelink Tx " << bytesForThisLc << " bytes to LC " << (uint32_t)(*itBsr).first.lcId << " statusQueue " << (*itBsr).second.statusPduSize << " retxQueue" << (*itBsr).second.retxQueueSize << " txQueue" <<  (*itBsr).second.txQueueSize);
+		 NS_LOG_LOGIC (this << " RNTI " << m_rnti << " Sidelink Tx " << bytesForThisLc << " bytes to LC " << (uint32_t)(*itBsr).first.lcId << " statusQueue " << (*itBsr).second.statusPduSize << " retxQueue " << (*itBsr).second.retxQueueSize << " txQueue " <<  (*itBsr).second.txQueueSize);
                  if (m_oneShotGrant)
                  {
+                   NS_FATAL_ERROR("One shot temporarily disabled!");
+/*
                    m_oneShotGrant = false; 
                    poolIt->second.m_currentV2XGrant = m_tmpV2XGrant;
                    if (poolIt->second.m_currentV2XGrant.m_Cresel == 0 )
@@ -3130,11 +3017,12 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
                      }
                    }
                    NS_LOG_DEBUG("Next reservation: SF(" << poolIt->second.m_currentV2XGrant.m_nextReservedFrame << "," << poolIt->second.m_currentV2XGrant.m_nextReservedSubframe << ") with Cresel = " << poolIt->second.m_currentV2XGrant.m_Cresel << ". Valid grant? " << poolIt->second.m_V2X_grant_received);
- 
+ */
                  }
              //    std::cin.get();
 		 if (((*itBsr).second.statusPduSize > 0) && (bytesForThisLc > (*itBsr).second.statusPduSize))
 		 {
+                   NS_FATAL_ERROR("This should never happen: if (((*itBsr).second.statusPduSize > 0) && (bytesForThisLc > (*itBsr).second.statusPduSize))");
  		   (*it).second.macSapUser->NotifyTxOpportunity ((*itBsr).second.statusPduSize, 0, 0); 
                    if ( (*itBsr).second.alreadyUESelected)
                    { 
@@ -3151,13 +3039,12 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 		     NS_FATAL_ERROR ("Insufficient Tx Opportunity for sending a status message");
  		   }
 		 }
-		 if ((bytesForThisLc > 7)    // 7 is the min TxOpportunity useful for Rlc
-		    && (((*itBsr).second.retxQueueSize > 0)
-	            || ((*itBsr).second.txQueueSize > 0)))
+		 if ((bytesForThisLc > 7) && (((*itBsr).second.retxQueueSize > 0) || ((*itBsr).second.txQueueSize > 0)))                  // 7 is the min TxOpportunity useful for Rlc
 		 {
 		   if ((*itBsr).second.retxQueueSize > 0)
 		   {
 		     NS_LOG_DEBUG (this << " serve retx DATA, bytes " << bytesForThisLc);
+                     NS_FATAL_ERROR("This should never happen: if ((*itBsr).second.retxQueueSize > 0)");
 		     (*it).second.macSapUser->NotifyTxOpportunity(bytesForThisLc, 0, 0);
 		     if ((*itBsr).second.retxQueueSize >= bytesForThisLc)
 		     {
@@ -3173,7 +3060,16 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 		     // minimum RLC overhead due to header
 		     uint32_t rlcOverhead = 2;
 		     NS_LOG_DEBUG (this << " serve tx DATA, bytes " << bytesForThisLc << ", RLC overhead " << rlcOverhead);
-		     (*it).second.macSapUser->NotifyTxOpportunity (bytesForThisLc, 0, 0);     
+                     if (poolIt->second.m_currentV2XGrant.m_TxIndex < poolIt->second.m_currentV2XGrant.m_grantTransmissions.size())
+                     {
+                       NS_LOG_INFO("Do not clean the RLC buffer");
+                       (*it).second.macSapUser->NotifyTxOpportunity (bytesForThisLc, 0, 1);
+                     }
+                     else  
+                     {
+                       NS_LOG_INFO("Clean the RLC buffer");
+                       (*it).second.macSapUser->NotifyTxOpportunity (bytesForThisLc, 0, 0);
+                     }
                      // added for V2X
                      if ((*itBsr).second.alreadyUESelected)
                      {  
@@ -3182,11 +3078,22 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
                      }
 		     if ((*itBsr).second.txQueueSize >= bytesForThisLc - rlcOverhead)
 		     {
+                       NS_FATAL_ERROR("NrV2XUeMac: (*itBsr).second.txQueueSize >= bytesForThisLc - rlcOverhead should never happen");
 		       (*itBsr).second.txQueueSize -= bytesForThisLc - rlcOverhead;
 		     }
 		     else
 		     {
-		       (*itBsr).second.txQueueSize = 0;
+                       if (poolIt->second.m_currentV2XGrant.m_TxIndex < poolIt->second.m_currentV2XGrant.m_grantTransmissions.size())
+                       {
+                         poolIt->second.m_currentV2XGrant.m_TxIndex += 1;
+                         NS_LOG_INFO("Not clearing the txQueue, there is a blind re-transmission " << (*itBsr).second.txQueueSize);
+                       }
+                       else
+                       {
+                         poolIt->second.m_currentV2XGrant.m_TxIndex = 1;
+                         (*itBsr).second.txQueueSize = 0; 
+                         NS_LOG_INFO("Clearing the txQueue " << (*itBsr).second.txQueueSize);
+                       }
 		     }
 		   }
 		 } //end if ((bytesForThisLc > 7..
@@ -3198,25 +3105,21 @@ NrV2XUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
 		     {
 		       // resend BSR info for updating eNB peer MAC
 		       m_freshSlBsr = true;
+                       NS_FATAL_ERROR("This should never happen"); 
 		     }
 		   }
 		 }
-		 NS_LOG_LOGIC (this << " RNTI " << m_rnti << " Sidelink Tx " << bytesForThisLc << "\t new queues " << (uint32_t)(*it).first.lcId << " statusQueue " << (*itBsr).second.statusPduSize << " retxQueue" << (*itBsr).second.retxQueueSize << " txQueue" <<  (*itBsr).second.txQueueSize);
-	       } // end if ( ((*itBsr).second.statusPduSize > 0) || ((*itBsr).second.retxQueueSize > 0) || ((*itBsr).second.txQueueSize > 0))
+		 NS_LOG_LOGIC (this << " RNTI " << m_rnti << " Sidelink Tx " << bytesForThisLc << " new queues " << (uint32_t)(*it).first.lcId << " statusQueue " << (*itBsr).second.statusPduSize << " retxQueue " << (*itBsr).second.retxQueueSize << " txQueue " <<  (*itBsr).second.txQueueSize);
+	       } // end if ( ((*itBsr).second.statusPduSize > 0) || ((*itBsr).second.retxQueueSize >0) || ((*itBsr).second.txQueueSize > 0))
 	       break;
 	     } // end if (itBsr->first.dstL2Id == poolIt->first)
            } // end for (itBsr = m_slBsrReceived.begin () ;  itBsr != m_slBsrReceived.end () ; itBsr++)
-         //  std::cin.get();
+//           if (m_rnti == 2)
+//             std::cin.get();
 	 } //end if (true)
 	 else
 	 {
-	   NS_LOG_INFO (this << " PSSCH retransmission " << (2 - poolIt->second.m_v2xTx.size () % 2));
-	   Ptr<PacketBurst> pb = poolIt->second.m_miSlHarqProcessPacket;
-	   for (std::list<Ptr<Packet> >::const_iterator j = pb->Begin (); j != pb->End (); ++j)
-	   {
-	     Ptr<Packet> pkt = (*j)->Copy ();
-	     m_uePhySapProvider->SendMacPdu (pkt);
-	   }
+           NS_FATAL_ERROR("This should never happen");
 	 }
 	 poolIt->second.m_v2xTx.erase (allocIter); //clear the transmission
        }// end if (allocIter != poolIt->second.m_v2xTx.end() && (*allocIter).subframe.frameNo == frameNo && (*allocIter).subframe.subframeNo  == subframeNo)
@@ -3303,8 +3206,9 @@ NrV2XUeMac::DoReportPsschRsrp (Time time, uint16_t rbStart, uint16_t rbLen, doub
 }
 
 void
-NrV2XUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI)
+NrV2XUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, double RRI, bool isReTx, bool isSameTB)
 {
+  NS_LOG_FUNCTION(this);
 
  reservedSubframe.frameNo = reservedSubframe.frameNo -1;
  reservedSubframe.subframeNo = reservedSubframe.subframeNo -1;
@@ -3312,7 +3216,6 @@ NrV2XUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t 
  receivedSubframe.frameNo = receivedSubframe.frameNo -1;
  receivedSubframe.subframeNo = receivedSubframe.subframeNo -1;
 
- NS_LOG_DEBUG("DoReportPsschRsrpReservation");
  if (!m_randomSelection)
  { 
 //    bool debug = false;
@@ -3325,7 +3228,9 @@ NrV2XUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t 
     newSensedReservedCSR.RRI = RRI;
     newSensedReservedCSR.reservedSF.frameNo = reservedSubframe.frameNo;
     newSensedReservedCSR.reservedSF.subframeNo = reservedSubframe.subframeNo;
-    
+    newSensedReservedCSR.isReTx = isReTx;
+    newSensedReservedCSR.isSameTB = isSameTB;
+
     if (useCreselRx)
     {
    //    newSensedReservedCSR.CreselRx = CreselRx + 1;
@@ -3339,6 +3244,7 @@ NrV2XUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t 
   
 
     NS_LOG_DEBUG("Reserved SF(" <<  reservedSubframe.frameNo << "," <<  reservedSubframe.subframeNo << "), RBs from " << rbStart << " to " << rbStart+rbLen-1);
+    NS_LOG_DEBUG("Is this a re-tx? " << isReTx << ", is this for the same TB? " << isSameTB);
 
     std::vector <int> CSRindex;
     for (uint16_t j = 0; j < rbLen/m_nsubCHsize; j++)
@@ -3371,13 +3277,8 @@ NrV2XUeMac::DoReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t 
         m_sensedReservedCSRMap.insert (std::pair<uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, std::vector<ReservedCSR>> > (*CSRindexIT,value));    
       }
     }
-
-
-
-
  } // end if (!m_randomselection)
-
-
+//std::cin.get();
 }
 
 void
@@ -3411,7 +3312,640 @@ NrV2XUeMac::DoStoreTxInfo (SidelinkCommResourcePool::SubframeInfo subframe, uint
               m_pastTxMap.insert (std::pair<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > (CSRindex,value));
               
          }
+
 }
+
+
+void
+NrV2XUeMac::ReEvaluateResources (SidelinkCommResourcePool::SubframeInfo currentSF, std::map <uint32_t, PoolInfo>::iterator IT, NistLteMacSapProvider::NistReportBufferNistStatusParameters pktParams)
+{
+   NS_LOG_FUNCTION(this);
+   V2XSidelinkGrant currentV2Xgrant = IT->second.m_currentV2XGrant;
+
+   currentSF.frameNo--;
+   currentSF.subframeNo--;
+
+   std::vector <uint16_t> GrantsToCheck, GrantsToChange, GrantsOK;
+   NS_LOG_INFO("Number of transmissions = " << currentV2Xgrant.m_grantTransmissions.size() << ", current index = " << currentV2Xgrant.m_TxIndex);
+   if (currentV2Xgrant.m_TxIndex < currentV2Xgrant.m_grantTransmissions.size()) //Works only with 2 Txions/TB
+   {
+     GrantsToCheck.push_back(currentV2Xgrant.m_TxIndex);
+     if (!(currentV2Xgrant.m_grantTransmissions[currentV2Xgrant.m_TxIndex+1].m_EnableReEvaluation) || (m_allSlotsReEvaluation)) 
+     {
+       GrantsToCheck.push_back(currentV2Xgrant.m_TxIndex+1);
+     }
+     else
+     {
+       GrantsOK.push_back(currentV2Xgrant.m_TxIndex+1); //Case for distance larger than 32 slots
+     }
+   }
+   else
+   {
+     GrantsToCheck.push_back(currentV2Xgrant.m_TxIndex);
+   }
+
+   for (std::vector <uint16_t>::iterator ItIt = GrantsToCheck.begin(); ItIt != GrantsToCheck.end(); ItIt++)
+   {
+     NS_LOG_INFO("Checking grant index " << *ItIt); 
+   }
+//   std::cin.get();
+//poolIt->second.m_currentV2XGrant.m_grantTransmissions[poolIt->second.m_currentV2XGrant.m_TxIndex].m_ReEvaluationSubframe
+
+   NS_LOG_DEBUG("Now: UE " << m_rnti << " and grant " << currentV2Xgrant.m_TxIndex << " out of "  << currentV2Xgrant.m_grantTransmissions.size() << " at SF(" << currentSF.frameNo + 1 << "," << currentSF.subframeNo + 1 
+   << "). Last Re-evaluation at SF(" << currentV2Xgrant.m_grantTransmissions[currentV2Xgrant.m_TxIndex].m_ReEvaluationFrame << "," << currentV2Xgrant.m_grantTransmissions[currentV2Xgrant.m_TxIndex].m_ReEvaluationSubframe << ")");
+  
+   SidelinkCommResourcePool::SubframeInfo genTimeSF;
+   genTimeSF = SimulatorTimeToSubframe(Seconds(pktParams.V2XGenTime), m_slotDuration);
+   double ElapsedTime;
+   ElapsedTime = SubtractFrames(currentSF.frameNo+1, genTimeSF.frameNo, currentSF.subframeNo+1, genTimeSF.subframeNo)*m_slotDuration; //Expressed in ms
+   double newPDB = pktParams.V2XPdb - ElapsedTime;
+   NS_LOG_DEBUG("Elapsed time = " << ElapsedTime << " ms. PDB = " << pktParams.V2XPdb << " ms. New PDB = " << newPDB << " ms");
+
+//  uint16_t totalLength = (uint32_t)( currentV2Xgrant.m_rbLenPscch + currentV2Xgrant.m_rbLenPssch); //Mode 4
+   uint16_t L_SubCh = (uint32_t) currentV2Xgrant.m_grantTransmissions[currentV2Xgrant.m_TxIndex].m_rbLenPssch/m_nsubCHsize;
+   uint16_t NSubCh = std::floor(m_BW_RBs / m_nsubCHsize);
+   
+   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, L1, Sa_noPastTx;
+ 
+//   Sa = SelectionWindow (currentSF, (newPDB-1)/m_slotDuration, NSubCh - L_SubCh + 1);
+   Sa = SelectionWindow (currentSF, (uint32_t)((newPDB-m_slotDuration)/m_slotDuration +1), NSubCh - L_SubCh + 1);
+   if (ComputeResidualCSRs(Sa) == 0)
+   {
+     NS_FATAL_ERROR("Selection window is empty");
+   }
+   // Print the list of CSRs (Sa)
+  /* NS_LOG_DEBUG("Printing the initial list Sa of candidate resources");
+     UnimorePrintCSR(Sa);*/
+
+//   if (m_rnti == m_debugNode)
+//     std::cin.get();
+
+   uint32_t iterationsCounter = 0, nCSR;
+   double psschThresh = m_rsrpThreshold;
+
+   //bool pastTxError = false, SelWindowError = false;
+
+ /*  NS_LOG_INFO("Checking the entire selection window");
+   for (std::vector <uint16_t>::iterator ItIt = GrantsToCheck.begin(); ItIt != GrantsToCheck.end(); ItIt++)
+   {
+     uint16_t CSRindex = ((uint32_t) currentV2Xgrant.m_grantTransmissions[*ItIt].m_rbStartPssch) / m_nsubCHsize;
+     SidelinkCommResourcePool::SubframeInfo checkSF;
+     checkSF.frameNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_nextReservedFrame - 1;
+     checkSF.subframeNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_nextReservedSubframe - 1;
+     NS_LOG_INFO("Checking grant index " << *ItIt << ": CSR index = " << CSRindex << " at SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")"); 
+
+     for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator L1it = Sa.begin(); L1it != Sa.end(); L1it++)
+     {
+       if (L1it->first == CSRindex)
+       {
+         std::list<SidelinkCommResourcePool::SubframeInfo>::iterator collisionIT = std::find(L1it->second.begin(), L1it->second.end(), checkSF);
+         if (collisionIT != L1it->second.end())
+           NS_LOG_DEBUG("Re-evaluation not triggered");
+         else
+         {
+           NS_LOG_UNCOND("UE " << m_rnti << " triggered a re-evaluation for CSR " << L1it->first << " at SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")");
+           SelWindowError = true;     
+           GrantsToChange.push_back(*ItIt);   
+//           std::cin.get();
+//           IT->second.m_currentV2XGrant = V2XSelectResources (currentSF.frameNo+1, currentSF.subframeNo+1, newPDB+m_slotDuration, pktParams.V2XPrsvp, pktParams.V2XMessageType, pktParams.V2XTrafficType, currentV2Xgrant.m_Cresel, pktParams.V2XPacketSize, pktParams.V2XReservationSize, ReEVALUATION); 
+         }
+       }
+     }
+   }*/
+
+
+//   if ( (!SelWindowError) && (!pastTxError) )
+   if (true)
+   {   
+     NS_LOG_INFO("Checking the entire selection window without past transmissions and without reservations");
+     L1 = Mode2Step1 (Sa, currentSF, currentV2Xgrant, newPDB, NSubCh, L_SubCh, &iterationsCounter, &psschThresh, &nCSR, m_UMHvariant);
+     for (std::vector <uint16_t>::iterator ItIt = GrantsToCheck.begin(); ItIt != GrantsToCheck.end(); ItIt++)
+     {
+       uint16_t CSRindex = ((uint32_t) currentV2Xgrant.m_grantTransmissions[*ItIt].m_rbStartPssch) / m_nsubCHsize;
+       SidelinkCommResourcePool::SubframeInfo checkSF;
+       checkSF.frameNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_nextReservedFrame - 1;
+       checkSF.subframeNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_nextReservedSubframe - 1;
+       NS_LOG_INFO("Checking grant index " << *ItIt << ": CSR index = " << CSRindex << " at SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")"); 
+     // Print the list of CSRs (L1)
+       for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator L1it = L1.begin(); L1it != L1.end(); L1it++)
+       {
+     //  NS_LOG_DEBUG("CSR index " << L1it->first);
+         if (L1it->first == CSRindex)
+         {
+           std::list<SidelinkCommResourcePool::SubframeInfo>::iterator collisionIT = std::find(L1it->second.begin(), L1it->second.end(), checkSF);
+           if (collisionIT != L1it->second.end())
+             NS_LOG_DEBUG("Re-evaluation not triggered");
+           else
+           {
+             NS_LOG_UNCOND("UE " << m_rnti << " triggered a re-evaluation for CSR " << L1it->first << " at SF(" << checkSF.frameNo << "," << checkSF.subframeNo << ")");
+             GrantsToChange.push_back(*ItIt);
+       //      std::cin.get();
+       //      IT->second.m_currentV2XGrant = V2XSelectResources (currentSF.frameNo+1, currentSF.subframeNo+1, newPDB+m_slotDuration, pktParams.V2XPrsvp, pktParams.V2XMessageType, pktParams.V2XTrafficType, currentV2Xgrant.m_Cresel, pktParams.V2XPacketSize, pktParams.V2XReservationSize, ReEVALUATION); 
+           }
+         }
+       }
+     }
+   }
+
+
+   for(std::vector <uint16_t>::iterator ItIt = GrantsToCheck.begin(); ItIt != GrantsToCheck.end(); ItIt++)
+   {
+     if(std::find(GrantsToChange.begin(), GrantsToChange.end(), (*ItIt)) != GrantsToChange.end())
+     {
+       NS_LOG_INFO("Grant index " << (*ItIt) << ": change it"); 
+     }
+     else
+     {
+       NS_LOG_INFO("Grant index " << (*ItIt) << ": don't change it"); 
+       GrantsOK.push_back(*ItIt);
+     }
+   }
+
+   if (GrantsToChange.size() != 0)
+   {
+
+     IT->second.m_currentV2XGrant = V2XChangeResources(IT->second.m_currentV2XGrant, GrantsToChange, GrantsOK, currentSF.frameNo+1, currentSF.subframeNo+1, newPDB+m_slotDuration, pktParams.V2XPacketSize, pktParams.V2XReservationSize, ReEVALUATION);
+
+     NS_LOG_INFO("Before re-evaluation");
+     for (std::map<uint16_t, V2XSchedulingInfo>::iterator ITgrant = currentV2Xgrant.m_grantTransmissions.begin(); ITgrant != currentV2Xgrant.m_grantTransmissions.end(); ITgrant++)
+     {
+       if(std::find(GrantsToChange.begin(), GrantsToChange.end(), ITgrant->first) != GrantsToChange.end())
+         NS_LOG_INFO("Grant index " << ITgrant->first << " at SF(" << ITgrant->second.m_nextReservedFrame << "," <<  ITgrant->second.m_nextReservedSubframe << "), CSR " << ((uint32_t) ITgrant->second.m_rbStartPssch) / m_nsubCHsize << ", reservation size " << ITgrant->second.m_rbLenPssch << " RBs: Changed!");
+       else
+         NS_LOG_INFO("Grant index " << ITgrant->first << " at SF(" << ITgrant->second.m_nextReservedFrame << "," <<  ITgrant->second.m_nextReservedSubframe << "), CSR " << ((uint32_t) ITgrant->second.m_rbStartPssch) / m_nsubCHsize << ", reservation size " << ITgrant->second.m_rbLenPssch << " RBs: Not Changed!");
+     }
+
+     NS_LOG_INFO("After re-evaluation");
+     for (std::map<uint16_t, V2XSchedulingInfo>::iterator ITgrant = IT->second.m_currentV2XGrant.m_grantTransmissions.begin(); ITgrant != IT->second.m_currentV2XGrant.m_grantTransmissions.end(); ITgrant++)
+     {
+       NS_LOG_INFO("Grant index " << ITgrant->first << " at SF(" << ITgrant->second.m_nextReservedFrame << "," <<  ITgrant->second.m_nextReservedSubframe << "), CSR " << ((uint32_t) ITgrant->second.m_rbStartPssch) / m_nsubCHsize << ", reservation size " << ITgrant->second.m_rbLenPssch << " RBs");
+     }
+//     std::cin.get();
+   }
+
+//   if (changeSelectedResources)
+   if (GrantsToChange.size() != 0) //If a re-evaluation has been triggered
+     IT->second.m_V2X_grant_fresh = true;
+
+   NS_LOG_INFO("Storing re-evaluation information"); 
+   for (std::vector <uint16_t>::iterator ItIt = GrantsToCheck.begin(); ItIt != GrantsToCheck.end(); ItIt++)
+   {
+     UeReEvaluationInfo tmpStorage;
+     tmpStorage.nodeId = m_rnti;
+     tmpStorage.time = Simulator::Now ().GetSeconds ();
+     tmpStorage.checkedTxIndex = (*ItIt);
+     tmpStorage.ReEvalSF.frameNo = currentSF.frameNo;
+     tmpStorage.ReEvalSF.subframeNo = currentSF.subframeNo;
+     tmpStorage.LastReEvalSF.frameNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_ReEvaluationFrame;
+     tmpStorage.LastReEvalSF.subframeNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_ReEvaluationSubframe;
+     tmpStorage.CheckSF.frameNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_nextReservedFrame - 1;
+     tmpStorage.CheckSF.subframeNo = currentV2Xgrant.m_grantTransmissions[*ItIt].m_nextReservedSubframe - 1;
+     tmpStorage.CheckCSR = ((uint32_t) currentV2Xgrant.m_grantTransmissions[*ItIt].m_rbStartPssch) / m_nsubCHsize;
+     tmpStorage.freshGrant = IT->second.m_V2X_grant_fresh;
+     tmpStorage.packetID = pktParams.V2XPacketID;
+
+     if(std::find(GrantsToChange.begin(), GrantsToChange.end(), (*ItIt)) != GrantsToChange.end())
+     {
+       tmpStorage.reSelection = true;  
+       tmpStorage.reSelectionType = 2; //fake value  
+     } 
+     else
+     {
+       tmpStorage.reSelection = false;  
+       tmpStorage.reSelectionType = 2; //fake value  
+     }
+  
+     NrV2XUeMac::ReEvaluationStats.push_back(tmpStorage);
+   }
+
+   if (Simulator::Now ().GetSeconds() - NrV2XUeMac::prevPrintTime_reEvaluation > m_savingPeriod)
+   {
+     NrV2XUeMac::prevPrintTime_reEvaluation = Simulator::Now ().GetSeconds();
+     //Check if the UE is within the central 2km
+     std::ofstream ReEvalFile;
+     ReEvalFile.open (m_outputPath + "ReEvaluationsLog.txt", std::ios_base::app);
+     for (std::vector<UeReEvaluationInfo>::iterator reEvalIT = NrV2XUeMac::ReEvaluationStats.begin(); reEvalIT != NrV2XUeMac::ReEvaluationStats.end(); reEvalIT++)
+     {
+       ReEvalFile << (int) reEvalIT->freshGrant << "," << reEvalIT->nodeId << "," << reEvalIT->time << "," << reEvalIT->packetID  << "," << reEvalIT->checkedTxIndex << "," << reEvalIT->ReEvalSF.frameNo+1 << "," << reEvalIT->ReEvalSF.subframeNo+1 << "," << reEvalIT->LastReEvalSF.frameNo << "," 
+       << reEvalIT->LastReEvalSF.subframeNo  << "," << reEvalIT->CheckCSR << "," << reEvalIT->CheckSF.frameNo+1 << "," << reEvalIT->CheckSF.subframeNo+1 << "," << (int) reEvalIT->reSelection << std::endl;
+     }
+     ReEvalFile.close();
+
+   /*  std::ofstream ReEvalFileEXT;
+     ReEvalFileEXT.open (m_outputPath + "ReEvaluationsLog_EXT.txt", std::ios_base::app);
+     for (std::vector<UeReEvaluationInfo>::iterator reEvalIT = NrV2XUeMac::ReEvaluationStats.begin(); reEvalIT != NrV2XUeMac::ReEvaluationStats.end(); reEvalIT++)
+     {
+       if (reEvalIT->freshGrant)
+         ReEvalFileEXT << "Fresh grant, ";
+       else
+         ReEvalFileEXT << "Non-fresh grant, "; 
+       ReEvalFileEXT << "UE " << reEvalIT->nodeId << ", Re-evaluation now: " << reEvalIT->time << ", packet " << reEvalIT->packetID << " @ tx index " << reEvalIT->checkedTxIndex << " at SF(" << reEvalIT->ReEvalSF.frameNo+1 << "," << reEvalIT->ReEvalSF.subframeNo+1 << "). Last re-evaluation at SF(" 
+       << reEvalIT->LastReEvalSF.frameNo  << "," << reEvalIT->LastReEvalSF.subframeNo  << "). Checking CSR index " << reEvalIT->CheckCSR << " at SF(" << reEvalIT->CheckSF.frameNo+1 << "," << reEvalIT->CheckSF.subframeNo+1 << "):";
+       if (reEvalIT->reSelection)
+         ReEvalFileEXT << " CHANGE!" << std::endl;
+       else
+         ReEvalFileEXT << " don't change!" << std::endl;
+     }
+     ReEvalFileEXT.close();*/
+
+     NrV2XUeMac::ReEvaluationStats.clear();
+   }
+
+//  std::cin.get();
+}
+
+
+
+NrV2XUeMac::V2XSidelinkGrant 
+NrV2XUeMac::V2XChangeResources (V2XSidelinkGrant OriginalGrant, std::vector<uint16_t> GrantsToChangeIndex, std::vector<uint16_t> OkGrantsIndex, uint32_t frameNo, uint32_t subframeNo, double pdb, uint16_t PacketSize, uint16_t ReservationSize, reselectionTrigger V2Xtrigger)
+{
+   V2XSidelinkGrant V2XGrant;
+
+   NS_ASSERT_MSG(OkGrantsIndex.size() < OriginalGrant.m_TxNumber, "Number of OK grants must be smaller than the total number of grants");
+
+   NS_ASSERT_MSG(pdb < m_maxPDB, "Current implementation allows only PDB values smaller than 110 ms");
+
+   frameNo --;
+   subframeNo --; 
+
+   V2XGrant.m_mcs = m_slGrantMcs;
+   V2XGrant.m_RRI = OriginalGrant.m_RRI;
+
+   V2XGrant.m_Cresel = OriginalGrant.m_Cresel;
+
+   V2XGrant.m_tbSize = 0; 
+
+   V2XGrant.m_TxNumber = OriginalGrant.m_TxNumber; 
+
+   SidelinkCommResourcePool::SubframeInfo currentSF;
+   currentSF.frameNo = frameNo;
+   currentSF.subframeNo = subframeNo;
+
+   NS_LOG_INFO("Re-Evaluation Requested Now: SF(" <<  currentSF.frameNo << "," << currentSF.subframeNo <<  "), Time: " << Simulator::Now ().GetSeconds () << "s, estimated SF(" 
+   << SimulatorTimeToSubframe (Simulator::Now (), m_slotDuration).frameNo << "," << SimulatorTimeToSubframe (Simulator::Now (), m_slotDuration).subframeNo << ")");
+
+   /*for(std::vector <uint16_t>::iterator ItIt = GrantsToChangeIndex.begin(); ItIt != GrantsToChangeIndex.end(); ItIt++)
+   {
+   //  uint16_t CSRindex = ((uint32_t) currentV2Xgrant.m_grantTransmissions[(*ItIt)].m_rbStartPssch) / m_nsubCHsize;
+     NS_LOG_INFO("Change grant index: " << (*ItIt));
+     NS_LOG_INFO("---- SF(" << OriginalGrant.m_grantTransmissions[(*ItIt)].m_nextReservedFrame << "," << OriginalGrant.m_grantTransmissions[(*ItIt)].m_nextReservedSubframe << "), CSR " << ((uint32_t) OriginalGrant.m_grantTransmissions[(*ItIt)].m_rbStartPssch) / m_nsubCHsize);
+   }
+
+   for(std::vector <uint16_t>::iterator ItIt = OkGrantsIndex.begin(); ItIt != OkGrantsIndex.end(); ItIt++)
+   {
+   //  uint16_t CSRindex = ((uint32_t) currentV2Xgrant.m_grantTransmissions[(*ItIt)].m_rbStartPssch) / m_nsubCHsize;
+     NS_LOG_INFO("Don't change grant index: " << (*ItIt));
+     NS_LOG_INFO("---- SF(" << OriginalGrant.m_grantTransmissions[(*ItIt)].m_nextReservedFrame << "," << OriginalGrant.m_grantTransmissions[(*ItIt)].m_nextReservedSubframe << "), CSR " << ((uint32_t) OriginalGrant.m_grantTransmissions[(*ItIt)].m_rbStartPssch) / m_nsubCHsize);
+   }*/
+
+   uint16_t nsubCHsize = m_nsubCHsize; // [RB]
+   uint16_t NSubCh; //the total number of subchannels
+   NSubCh = std::floor(m_BW_RBs / nsubCHsize); // 50/10 
+   uint16_t L_SubCh = m_L_SubCh, L_RBs; // the number of subchannels for the reservation
+    	 
+   uint32_t AdjustedPacketSize, AdjustedReservationSize;  
+   AdjustedPacketSize = m_NRamc->GetSlSubchAndTbSizeFromMcs (PacketSize, V2XGrant.m_mcs , m_nsubCHsize, m_BW_RBs, &L_SubCh, &L_RBs) / 8;
+   L_SubCh/= m_nsubCHsize;
+   NS_LOG_DEBUG("Reserving resources for packet size: " << PacketSize << " B, adjusted to " << AdjustedPacketSize << " B, required RBs = " << L_RBs << ", required subchannels " << L_SubCh);
+
+   AdjustedReservationSize = m_NRamc->GetSlSubchAndTbSizeFromMcs (ReservationSize, V2XGrant.m_mcs , m_nsubCHsize, m_BW_RBs, &L_SubCh, &L_RBs) / 8;
+   L_SubCh/= m_nsubCHsize;
+   L_SubCh = OriginalGrant.m_grantTransmissions[1].m_rbLenPssch/m_nsubCHsize; //TODO Comment if you want the reservation size to change 
+   NS_LOG_DEBUG("Actual reservation size is: " << ReservationSize << " B, adjusted to " << AdjustedReservationSize << " B, required RBs = " << L_RBs << ", required subchannels " << L_SubCh);
+
+//   uint16_t N_CSR_per_SF = NSubCh - L_SubCh + 1;
+   NS_LOG_INFO("N_CSR_per_SF: " << (int) NSubCh - L_SubCh + 1);
+   double T_2 = pdb - m_slotDuration; 
+   uint32_t T_2_slots = T_2/m_slotDuration;
+
+   uint16_t nbRb_Pssch = L_SubCh*nsubCHsize ; //FIXME: Mode 2 PSSCH
+   uint16_t nbRb_Pscch = nsubCHsize ; //FIXME: Mode 2 PSCCH (Occupy only the first subchannel)
+
+   Ptr<UniformRandomVariable> uniformRnd = CreateObject<UniformRandomVariable> ();
+                      
+   // Second Option to build the list
+   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > Sa, L1;
+   std::vector<CandidateCSRl2> finalL2; 
+   uint32_t iterationsCounter = 0;
+   double psschThresh = m_rsrpThreshold;
+
+   Sa = SelectionWindow (currentSF, T_2_slots, NSubCh - L_SubCh + 1);
+
+   NS_LOG_DEBUG("Initial list Sa size: " << ComputeResidualCSRs (Sa) );
+
+   uint32_t nCSRinitial = ComputeResidualCSRs (Sa);
+   uint32_t nCSRpastTx, nCSRfinal;
+
+   // Print the list of CSRs (Sa)
+  /* NS_LOG_DEBUG("Printing the initial list Sa of candidate resources");
+     UnimorePrintCSR(Sa);*/
+
+//   if (m_rnti == m_debugNode)
+//     std::cin.get();
+
+   L1 = Mode2Step1 (Sa, currentSF, V2XGrant, T_2, NSubCh, L_SubCh, &iterationsCounter, &psschThresh, &nCSRpastTx, false);
+
+   nCSRfinal = ComputeResidualCSRs (L1);
+
+   NS_LOG_INFO("Initial list size = " << nCSRinitial << ". After removing past Tx = " << nCSRpastTx << ". After removing reservations = " << nCSRfinal);
+
+   std::vector<CandidateCSRl2> L2EquivalentVector;
+   CandidateCSRl2 FinalL2tmpItem;
+   for(std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator L1it = L1.begin(); L1it != L1.end(); L1it++)
+   {
+     //  NS_LOG_DEBUG("CSR index " << L1it->first);
+     for(std::list<SidelinkCommResourcePool::SubframeInfo>::iterator FrameIT = L1it->second.begin(); FrameIT != L1it->second.end(); FrameIT++)
+     {
+       FinalL2tmpItem.CSRIndex = L1it->first;
+       FinalL2tmpItem.subframe = (*FrameIT);
+       FinalL2tmpItem.rssi = 0;
+       finalL2.push_back (FinalL2tmpItem);
+     }
+     //   NS_LOG_DEBUG("Frame " << FrameIT->frameNo << " subframe " << FrameIT->subframeNo);
+   }
+
+   uint16_t firstSelectedCSR;
+   SidelinkCommResourcePool::SubframeInfo firstSelectedSF;
+
+   uint16_t secondSelectedCSR;
+   SidelinkCommResourcePool::SubframeInfo secondSelectedSF;
+
+   if (GrantsToChangeIndex.size() == OriginalGrant.m_TxNumber)
+   {
+     NS_LOG_INFO("UE " << m_rnti << " scheduled " << V2XGrant.m_TxNumber << " tranmissions: change all the resource(s)");
+
+   //  V2XGrant.m_TxIndex = 1;
+     V2XGrant.m_TxIndex = OriginalGrant.m_TxIndex;
+
+     Ptr<UniformRandomVariable> selectFromL2 = CreateObject<UniformRandomVariable> ();
+     CandidateCSRl2 FirstSelectedResource = finalL2[selectFromL2 -> GetInteger (0, finalL2.size () - 1)];
+
+     firstSelectedCSR = FirstSelectedResource.CSRIndex;
+     firstSelectedSF = FirstSelectedResource.subframe;
+     NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << firstSelectedCSR << " at SF(" << firstSelectedSF.frameNo << "," << firstSelectedSF.subframeNo << "). Adjusted to SF(" << firstSelectedSF.frameNo+1 << "," << firstSelectedSF.subframeNo+1 << ")");
+
+     V2XSchedulingInfo firstSelection, secondSelection;
+     firstSelection.m_rbLenPssch = nbRb_Pssch;
+     firstSelection.m_rbLenPscch = nbRb_Pscch;
+     firstSelection.m_nextReservedSubframe = firstSelectedSF.subframeNo+1;
+     firstSelection.m_nextReservedFrame = firstSelectedSF.frameNo+1;
+     firstSelection.m_rbStartPscch = firstSelectedCSR * nsubCHsize; // (Mode 2)
+     firstSelection.m_rbStartPssch = firstSelectedCSR * nsubCHsize; // (Mode 2)
+
+     SidelinkCommResourcePool::SubframeInfo firstReEvaluationSF = ComputeReEvaluationFrame(firstSelection.m_nextReservedFrame, firstSelection.m_nextReservedSubframe);
+     firstSelection.m_ReEvaluationFrame = firstReEvaluationSF.frameNo;
+     firstSelection.m_ReEvaluationSubframe = firstReEvaluationSF.subframeNo;
+     firstSelection.m_EnableReEvaluation = true;
+     firstSelection.m_SelectionTrigger = V2Xtrigger;
+     firstSelection.m_announced = false;
+
+     if (V2XGrant.m_TxNumber > 1) // if there is more than one scheduled Txion
+     {
+       NS_LOG_DEBUG ("Re-transmissions enabled! Selecting another SSR");
+      /* for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+       {
+         NS_LOG_DEBUG("CSRindex: " << (int) L2It->CSRIndex << ", SF(" <<  L2It->subframe.frameNo << "," << L2It->subframe.subframeNo << "), RSSI: " <<  L2It->rssi << " mW");
+       }
+       std::cin.get();*/
+       std::vector<CandidateCSRl2> CandidateList_ReTx; 
+       for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+       {
+         if (!(L2It->subframe == FirstSelectedResource.subframe) && EvaluateSlotsDifference(firstSelectedSF, L2It->subframe, m_maxPDB/m_slotDuration) < 32)
+            CandidateList_ReTx.push_back(*L2It);
+       }
+
+  /*     NS_LOG_DEBUG("Print the new list of candidate resources");
+       for (std::vector<CandidateCSRl2>::iterator L2It = CandidateList_ReTx.begin (); L2It != CandidateList_ReTx.end (); L2It++)
+       {
+         NS_LOG_DEBUG("CSRindex: " << (int) L2It->CSRIndex << ", SF(" <<  L2It->subframe.frameNo << "," << L2It->subframe.subframeNo << "), RSSI: " <<  L2It->rssi << " mW");
+       }
+       std::cin.get();*/
+
+       bool enableSecondReEvaluation;
+       if (CandidateList_ReTx.size() == 0)
+       { 
+         NS_LOG_INFO("There are not enough resources within the 32 slots, building a new list");
+         enableSecondReEvaluation =  true;
+         CandidateList_ReTx.clear();
+         for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+         {
+           if (!(L2It->subframe == FirstSelectedResource.subframe))
+              CandidateList_ReTx.push_back(*L2It);
+         }
+       }
+       else
+       {
+         enableSecondReEvaluation = false;
+       }
+
+ //      NS_ASSERT_MSG(CandidateList_ReTx.size() != 0, "Candidate resources list for re-transmissions is empty");
+       if (CandidateList_ReTx.size() != 0) 
+       { 
+         NS_LOG_INFO("There are enough resources for a new selection");
+         CandidateCSRl2 SecondSelectedResource = CandidateList_ReTx[selectFromL2 -> GetInteger (0, CandidateList_ReTx.size () - 1)];
+         secondSelectedCSR = SecondSelectedResource.CSRIndex;
+         secondSelectedSF = SecondSelectedResource.subframe;
+
+         NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << secondSelectedCSR << " at SF(" << secondSelectedSF.frameNo << "," << secondSelectedSF.subframeNo << "). Adjusted to SF(" << secondSelectedSF.frameNo+1 << "," << secondSelectedSF.subframeNo+1 << ")");
+
+         NS_ASSERT_MSG(!(firstSelectedSF.frameNo == secondSelectedSF.frameNo && firstSelectedSF.subframeNo == secondSelectedSF.subframeNo ), "First and second selection should be on different slots");  
+
+         secondSelection.m_rbLenPssch = nbRb_Pssch;
+         secondSelection.m_rbLenPscch = nbRb_Pscch;
+         secondSelection.m_nextReservedSubframe = secondSelectedSF.subframeNo+1;
+         secondSelection.m_nextReservedFrame = secondSelectedSF.frameNo+1;
+         secondSelection.m_rbStartPscch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+         secondSelection.m_rbStartPssch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+    
+         SidelinkCommResourcePool::SubframeInfo secondReEvaluationSF = ComputeReEvaluationFrame(secondSelection.m_nextReservedFrame, secondSelection.m_nextReservedSubframe);
+         secondSelection.m_ReEvaluationFrame = secondReEvaluationSF.frameNo;
+         secondSelection.m_ReEvaluationSubframe = secondReEvaluationSF.subframeNo;
+         secondSelection.m_EnableReEvaluation = true;
+         secondSelection.m_SelectionTrigger = V2Xtrigger;
+         secondSelection.m_announced = false;
+
+         NS_LOG_INFO("Slots difference = " << EvaluateSlotsDifference(firstSelectedSF, secondSelectedSF, m_maxPDB/m_slotDuration));
+        
+         V2XGrant.m_grantTransmissions = UnimoreSortSelections(firstSelection, secondSelection, m_maxPDB/m_slotDuration); //Sort the two grants
+
+         if (!enableSecondReEvaluation)
+           V2XGrant.m_grantTransmissions[2].m_EnableReEvaluation = false;
+       }
+       else
+       {
+         NS_LOG_INFO("There are not enough resources, keep the original grant");
+         V2XGrant.m_grantTransmissions = OriginalGrant.m_grantTransmissions;
+       }
+     }
+     else
+     {
+       V2XGrant.m_grantTransmissions.insert(std::pair<uint16_t, V2XSchedulingInfo> (1, firstSelection));
+     }
+
+   }
+   else if ((OriginalGrant.m_TxNumber > 1) && (OriginalGrant.m_TxIndex == OriginalGrant.m_TxNumber)) //Re-evaluate only the re-transmission
+   {
+     NS_ASSERT_MSG((GrantsToChangeIndex.size() == 1) && (GrantsToChangeIndex[0] == OriginalGrant.m_TxNumber), "Something wrong with the re-evaluation of second transmission");
+
+     V2XGrant.m_TxIndex = OriginalGrant.m_TxIndex;
+
+     NS_LOG_INFO("UE " << m_rnti << " scheduled " << V2XGrant.m_TxNumber << " tranmissions: change only the second transmission at index " << V2XGrant.m_TxIndex);
+
+     Ptr<UniformRandomVariable> selectFromL2 = CreateObject<UniformRandomVariable> ();
+     CandidateCSRl2 SecondSelectedResource = finalL2[selectFromL2 -> GetInteger (0, finalL2.size () - 1)];
+
+     secondSelectedCSR = SecondSelectedResource.CSRIndex;
+     secondSelectedSF = SecondSelectedResource.subframe;
+
+     NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << secondSelectedCSR << " at SF(" << secondSelectedSF.frameNo << "," << secondSelectedSF.subframeNo << "). Adjusted to SF(" << secondSelectedSF.frameNo+1 << "," << secondSelectedSF.subframeNo+1 << ")");
+
+     V2XSchedulingInfo firstSelection, secondSelection;
+     secondSelection.m_rbLenPssch = nbRb_Pssch;
+     secondSelection.m_rbLenPscch = nbRb_Pscch;
+     secondSelection.m_nextReservedSubframe = secondSelectedSF.subframeNo+1;
+     secondSelection.m_nextReservedFrame = secondSelectedSF.frameNo+1;
+     secondSelection.m_rbStartPscch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+     secondSelection.m_rbStartPssch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+    
+     SidelinkCommResourcePool::SubframeInfo secondReEvaluationSF = ComputeReEvaluationFrame(secondSelection.m_nextReservedFrame, secondSelection.m_nextReservedSubframe);
+     secondSelection.m_ReEvaluationFrame = secondReEvaluationSF.frameNo;
+     secondSelection.m_ReEvaluationSubframe = secondReEvaluationSF.subframeNo;
+     secondSelection.m_EnableReEvaluation = true;
+     secondSelection.m_SelectionTrigger = V2Xtrigger;
+     secondSelection.m_announced = false;
+
+     V2XGrant.m_grantTransmissions = OriginalGrant.m_grantTransmissions;
+  
+     firstSelection = V2XGrant.m_grantTransmissions[1];
+     firstSelectedSF.frameNo = firstSelection.m_nextReservedFrame-1;
+     firstSelectedSF.subframeNo = firstSelection.m_nextReservedSubframe-1;
+
+     if (EvaluateSlotsDifference(firstSelectedSF, secondSelectedSF, m_maxPDB/m_slotDuration) < 32)
+       secondSelection.m_EnableReEvaluation = false;
+
+     V2XGrant.m_grantTransmissions[2] = secondSelection;
+ //    NS_LOG_UNCOND("Cambio solo la ri-trasmissione");
+ //    std::cin.get();
+   }
+   else if ((OriginalGrant.m_TxNumber > 1) && (OriginalGrant.m_TxIndex < OriginalGrant.m_TxNumber) && (GrantsToChangeIndex.size() < OriginalGrant.m_TxNumber))
+   {
+     NS_LOG_INFO("Change only a portion of the resources");
+     NS_LOG_INFO("UE " << m_rnti << " scheduled " << V2XGrant.m_TxNumber << " tranmissions");
+
+     V2XGrant.m_TxIndex = OriginalGrant.m_TxIndex;
+
+     V2XSchedulingInfo firstSelection, secondSelection;
+     firstSelection.m_rbLenPssch = nbRb_Pssch;
+     firstSelection.m_rbLenPscch = nbRb_Pscch;
+     firstSelection.m_nextReservedSubframe = OriginalGrant.m_grantTransmissions[OkGrantsIndex[0]].m_nextReservedSubframe;
+     firstSelection.m_nextReservedFrame = OriginalGrant.m_grantTransmissions[OkGrantsIndex[0]].m_nextReservedFrame;
+     firstSelection.m_rbStartPscch = OriginalGrant.m_grantTransmissions[OkGrantsIndex[0]].m_rbStartPscch; // (Mode 2)
+     firstSelection.m_rbStartPssch = OriginalGrant.m_grantTransmissions[OkGrantsIndex[0]].m_rbStartPssch; // (Mode 2)
+
+     SidelinkCommResourcePool::SubframeInfo firstReEvaluationSF = ComputeReEvaluationFrame(firstSelection.m_nextReservedFrame, firstSelection.m_nextReservedSubframe);
+     firstSelection.m_ReEvaluationFrame = firstReEvaluationSF.frameNo;
+     firstSelection.m_ReEvaluationSubframe = firstReEvaluationSF.subframeNo;
+     firstSelection.m_EnableReEvaluation = true;
+     firstSelection.m_SelectionTrigger = OriginalGrant.m_grantTransmissions[OkGrantsIndex[0]].m_SelectionTrigger;
+     firstSelection.m_announced = OriginalGrant.m_grantTransmissions[OkGrantsIndex[0]].m_announced;
+
+     firstSelectedCSR = ((uint32_t)firstSelection.m_rbStartPssch) / m_nsubCHsize;
+     firstSelectedSF.frameNo = firstSelection.m_nextReservedFrame-1;
+     firstSelectedSF.subframeNo = firstSelection.m_nextReservedSubframe-1;
+
+     NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << firstSelectedCSR << " at SF(" << firstSelectedSF.frameNo << "," << firstSelectedSF.subframeNo << "). Adjusted to SF(" << firstSelectedSF.frameNo+1 << "," << firstSelectedSF.subframeNo+1 << ")");
+
+     std::vector<CandidateCSRl2> CandidateList_ReTx; 
+     for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+     {
+       if (!(L2It->subframe == firstSelectedSF) && EvaluateSlotsDifference(firstSelectedSF, L2It->subframe, m_maxPDB/m_slotDuration) < 32)
+          CandidateList_ReTx.push_back(*L2It);
+     }
+
+//     NS_ASSERT_MSG(CandidateList_ReTx.size() != 0, "Candidate resources list for re-transmissions is empty");
+
+     bool enableSecondReEvaluation;
+     if (CandidateList_ReTx.size() == 0)
+     { 
+       NS_LOG_INFO("There are not enough resources within the 32 slots, building a new list");
+       enableSecondReEvaluation =  true;
+       CandidateList_ReTx.clear();
+       for (std::vector<CandidateCSRl2>::iterator L2It = finalL2.begin (); L2It != finalL2.end (); L2It++)
+       {
+         if (!(L2It->subframe == firstSelectedSF))
+            CandidateList_ReTx.push_back(*L2It);
+       }
+     }
+     else
+     {
+       enableSecondReEvaluation = false;
+     }
+
+     if (CandidateList_ReTx.size() != 0) 
+     { 
+       NS_LOG_INFO("There are enough resources for a new selection");
+       Ptr<UniformRandomVariable> selectFromL2 = CreateObject<UniformRandomVariable> ();
+       CandidateCSRl2 SecondSelectedResource = CandidateList_ReTx[selectFromL2 -> GetInteger (0, CandidateList_ReTx.size () - 1)];
+       secondSelectedCSR = SecondSelectedResource.CSRIndex;
+       secondSelectedSF = SecondSelectedResource.subframe;
+
+       NS_LOG_DEBUG("Now: UE " << m_rnti << " at SF(" << currentSF.frameNo << "," << currentSF.subframeNo << ") Selected CSR index " << secondSelectedCSR << " at SF(" << secondSelectedSF.frameNo << "," << secondSelectedSF.subframeNo << "). Adjusted to SF(" << secondSelectedSF.frameNo+1 << "," << secondSelectedSF.subframeNo+1 << ")");
+
+       NS_ASSERT_MSG(!(firstSelectedSF.frameNo == secondSelectedSF.frameNo && firstSelectedSF.subframeNo == secondSelectedSF.subframeNo ), "First and second selection should be on different slots");  
+
+       secondSelection.m_rbLenPssch = nbRb_Pssch;
+       secondSelection.m_rbLenPscch = nbRb_Pscch;
+       secondSelection.m_nextReservedSubframe = secondSelectedSF.subframeNo+1;
+       secondSelection.m_nextReservedFrame = secondSelectedSF.frameNo+1;
+       secondSelection.m_rbStartPscch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+       secondSelection.m_rbStartPssch = secondSelectedCSR * nsubCHsize; // (Mode 2)
+    
+       SidelinkCommResourcePool::SubframeInfo secondReEvaluationSF = ComputeReEvaluationFrame(secondSelection.m_nextReservedFrame, secondSelection.m_nextReservedSubframe);
+       secondSelection.m_ReEvaluationFrame = secondReEvaluationSF.frameNo;
+       secondSelection.m_ReEvaluationSubframe = secondReEvaluationSF.subframeNo;
+       secondSelection.m_EnableReEvaluation = true;
+       secondSelection.m_SelectionTrigger = V2Xtrigger;
+       secondSelection.m_announced = false;
+
+       NS_LOG_INFO("Slots difference = " << EvaluateSlotsDifference(firstSelectedSF, secondSelectedSF, m_maxPDB/m_slotDuration));
+        
+       V2XGrant.m_grantTransmissions = UnimoreSortSelections(firstSelection, secondSelection, m_maxPDB/m_slotDuration); //Sort the two grants
+
+       if (!enableSecondReEvaluation)
+         V2XGrant.m_grantTransmissions[2].m_EnableReEvaluation = false;
+     }
+     else
+     {
+       NS_LOG_INFO("There are not enough resources, keep the original grant");
+       V2XGrant.m_grantTransmissions = OriginalGrant.m_grantTransmissions;
+     }
+
+   }
+   else
+   {
+     NS_FATAL_ERROR("NrV2XUeMac::V2XChangeResources -> Unhandled option in the re-evaluation of resources");
+   }
+
+
+   UeSelectionInfo tmp;
+   tmp.selGrant = V2XGrant;
+   tmp.RSRPthresh = psschThresh-3;
+   tmp.iterations = iterationsCounter;
+   tmp.time = Simulator::Now ().GetSeconds();
+   tmp.selFrame.frameNo = currentSF.frameNo;
+   tmp.selFrame.subframeNo = currentSF.subframeNo;
+   tmp.nodeId = m_rnti;
+   tmp.nCSRfinal = nCSRfinal;
+   tmp.nCSRpastTx = nCSRpastTx;
+   tmp.nCSRinitial = nCSRinitial;
+   tmp.pdb = pdb;
+
+   NrV2XUeMac::SelectedGrants.push_back(tmp);
+
+   return V2XGrant;
+}
+
+
 
 std::list< Ptr<SidelinkRxDiscResourcePool> > 
 NrV2XUeMac::GetDiscRxPools ()
@@ -3426,5 +3960,7 @@ NrV2XUeMac::GetDiscTxPool ()
   NS_LOG_FUNCTION (this);
   return m_discTxPools.m_pool; 
 }
+
+
 
 } // namespace ns3

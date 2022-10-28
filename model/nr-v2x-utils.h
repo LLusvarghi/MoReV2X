@@ -31,9 +31,27 @@ uint32_t SubtractFrames (uint16_t frameAhead, uint16_t frame, uint16_t subframeA
 
 SidelinkCommResourcePool::SubframeInfo SimulatorTimeToSubframe (Time time, double slotDuration);
 
+uint32_t EvaluateSlotsDifference(SidelinkCommResourcePool::SubframeInfo SF1, SidelinkCommResourcePool::SubframeInfo SF2, uint32_t maxDifference);
+
+/**
+* Method to count the residual CSRs
+*/
+
+uint32_t ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1);
+
+uint16_t GetTproc0 (uint16_t numerologyIndex);
+
+uint16_t GetTproc1 (uint16_t numerologyIndex);
+
+uint32_t GetCresel (double RRI);
+
 uint32_t GetRbsFromBW (uint16_t SCS, uint32_t BW);
 
 double GetRefSensitivity (uint16_t SCS, uint32_t BW);
+
+double GetRSSIthreshold (double RXsensitivity);
+
+double GetGeoCellSize (uint32_t SubChannelSize, uint16_t BW_RBs, double ReuseDistance, uint32_t *NumberGeoCells);
 
 } //namespace ns3
 #endif /* NR_V2X_UTILS_H */

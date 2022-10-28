@@ -468,12 +468,12 @@ public:
   /** 
    * \return the uplink bandwidth in RBs
    */
-  uint8_t GetUlBandwidth () const;
+  uint16_t GetUlBandwidth () const;
 
   /** 
    * \return the downlink bandwidth in RBs
    */
-  uint8_t GetDlBandwidth () const;
+  uint16_t GetDlBandwidth () const;
 
   /**
    * \return the downlink carrier frequency (EARFCN)
@@ -932,8 +932,8 @@ private:
 
   NistLteRrcSap::NistPdschConfigDedicated m_pdschConfigDedicated;
 
-  uint8_t m_dlBandwidth; /**< Downlink bandwidth in RBs. */
-  uint8_t m_ulBandwidth; /**< Uplink bandwidth in RBs. */
+  uint16_t m_dlBandwidth; /**< Downlink bandwidth in RBs. */
+  uint16_t m_ulBandwidth; /**< Uplink bandwidth in RBs. */
 
   uint16_t m_dlEarfcn;  /**< Downlink carrier frequency. */
   uint16_t m_ulEarfcn;  /**< Uplink carrier frequency. */

@@ -751,14 +751,14 @@ NistLteUeRrc::GetCellId () const
 }
 
 
-uint8_t 
+uint16_t 
 NistLteUeRrc::GetUlBandwidth () const
 {
   NS_LOG_FUNCTION (this);
   return m_ulBandwidth;
 }
 
-uint8_t 
+uint16_t 
 NistLteUeRrc::GetDlBandwidth () const
 {
   NS_LOG_FUNCTION (this);

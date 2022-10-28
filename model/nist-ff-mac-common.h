@@ -186,15 +186,14 @@ struct NistSciListElement_s // Format 0
 
 /**
  * \brief See TS 36.212 clause 5.4.3.1.2 Rel 14
- *        To be used with sidelink Modes 3 and 4
- *        Created by L. Gibellini, UniMoRe
+ *        To be used with sidelink
  */
 //TODO FIXME NEW 
 
 struct NistV2XSciListElement_s // SCI Format 1
 {
   uint16_t  m_rnti;
-  uint8_t   m_resPscch;       //added for modeling
+
   uint8_t   m_hopping;
   uint16_t   m_rbStartPssch; //models rb assignment for PSSCH
   uint16_t   m_rbLenPssch;   //models rb assignment for PSSCH: the reserved RBs
@@ -210,9 +209,9 @@ struct NistV2XSciListElement_s // SCI Format 1
   uint8_t   m_groupDstId;
 
   uint8_t m_pppp;
-  uint8_t m_SFGap; //Time gap between initial transmission and retransmission [subframes]
+
   //uint16_t m_riv;
-  uint16_t m_reservation; //real field
+  double m_reservation; //real field
   SidelinkCommResourcePool::SubframeInfo m_reservedSubframe; //fake field holding the exact subframe information
   SidelinkCommResourcePool::SubframeInfo m_receivedSubframe; //the subframe at which the reservation has been received
 
@@ -224,6 +223,27 @@ struct NistV2XSciListElement_s // SCI Format 1
   double m_psschRsrpDb; // fake field set receiver-side within SpectrumPhy to convey information about the detected PSSCH-RSRP
                          // over the RBs carrying the TB associated with this SCI
   uint64_t m_packetID;
+
+  uint16_t m_selectionTrigger;
+
+  /*Fields for retransmissions*/
+  uint16_t m_TxIndex;
+  uint16_t m_TxNumber;
+
+  bool m_announcedTB;
+
+  bool m_announceNextTxion;
+  double m_timeDiff;
+
+  double m_genTime;
+
+  SidelinkCommResourcePool::SubframeInfo m_secondSubframe; //fake field holding the exact subframe information
+  SidelinkCommResourcePool::SubframeInfo m_secondReservedSubframe; //fake field holding the exact subframe information
+
+  uint16_t   m_secondRbStartPssch; //models rb assignment for PSSCH
+  uint16_t   m_secondRbLenPssch;   //models rb assignment for PSSCH: the reserved RBs
+  uint16_t   m_secondRbStartPscch; //models rb assignment for PSCCH
+  uint16_t   m_secondRbLenPscch;   //models rb assignment for PSCCH: must be set to 2
 };
  
 struct NistSlDiscMsg

@@ -32,7 +32,7 @@
 #include "nr-v2x-ue-phy.h"
 #include "nist-lte-net-device.h"
 #include "nr-v2x-ue-net-device.h"
-#include "nist-lte-spectrum-value-helper.h"
+#include "nr-v2x-spectrum-value-helper.h"
 #include "nr-v2x-ue-mac.h"
 #include "nist-lte-chunk-processor.h"
 #include <ns3/nist-lte-common.h>
@@ -45,6 +45,7 @@
 #include <ns3/string.h>
 #include <iostream>
 #include <algorithm>
+#include <ns3/node-container.h>
 
 #include "nr-v2x-utils.h"
 
@@ -152,6 +153,9 @@ double prevPrintTime = 0.0;*/
 std::vector<NrV2XUePhy::TxPacketInfo> NrV2XUePhy::txPackets;
 double NrV2XUePhy::prevPrintTime = 0.0;
 
+std::vector<NrV2XUePhy::CBRInfo> NrV2XUePhy::CBRValues;
+double NrV2XUePhy::CBRSavingInterval = 0.0;
+
 NS_OBJECT_ENSURE_REGISTERED (NrV2XUePhy);
 
 
@@ -216,9 +220,9 @@ NrV2XUePhy::NrV2XUePhy (Ptr<NrV2XSpectrumPhy> dlPhy, Ptr<NrV2XSpectrumPhy> ulPhy
   m_discTxApps.clear (); 
 
   //added for V2X
-  m_CBRInterval = 0.0;
+  m_CBRCheckingPeriod = 0.5;
+  m_CBRCheckingInterval = 0.0;
 
-  m_psschRsrpThresh = 107; // -107dBm
   DoReset ();
 }
 
@@ -397,6 +401,16 @@ NrV2XUePhy::GetTypeId (void)
                    BooleanValue(false),
                    MakeBooleanAccessor(&NrV2XUePhy::m_IBE),
                    MakeBooleanChecker())
+    .AddAttribute ("ReferenceSensitivity",
+	           "The Reference Sensitivity",
+		   DoubleValue (-92.5),
+		   MakeDoubleAccessor (&NrV2XUePhy::m_rxSensitivity),
+		   MakeDoubleChecker<double> ())
+    .AddAttribute ("RSSIthreshold",
+	           "The CBR S-RSSI threshold",
+		   DoubleValue (-90.0),
+		   MakeDoubleAccessor (&NrV2XUePhy::m_RSSIthresh),
+		   MakeDoubleChecker<double> ())
     .AddAttribute ("OutputPath",
                    "Specifiy the output path where to store the results",
                    StringValue ("results/sidelink/"),
@@ -407,6 +421,7 @@ NrV2XUePhy::GetTypeId (void)
 		   DoubleValue (1.0),
 		   MakeDoubleAccessor (&NrV2XUePhy::m_savingPeriod),
 		   MakeDoubleChecker<double> ())
+
 
 
     ;
@@ -571,7 +586,7 @@ Ptr<SpectrumValue> NrV2XUePhy::CreateTxPowerSpectralDensity () //FIXME The value
 {
   NS_LOG_FUNCTION (this);
 
-  NistLteSpectrumValueHelper psdHelper;
+  NrV2XSpectrumValueHelper psdHelper;
 //  Ptr<SpectrumValue> psd = psdHelper.CreateUlTxPowerSpectralDensity (m_ulEarfcn, m_ulBandwidth, m_txPower, GetSubChannelsForTransmission (), m_slotDuration);
   Ptr<SpectrumValue> psd = psdHelper.CreateUlTxPowerSpectralDensity (m_ulEarfcn, m_BW_RBs, m_txPower, GetSubChannelsForTransmission (), m_slotDuration, m_SCS, m_currentMCS, m_IBE);
 
@@ -712,62 +727,77 @@ void
 NrV2XUePhy::UnimoreReceivedRssi (double rssi, std::vector <int> rbMap, uint16_t ID)
 {
   NS_LOG_FUNCTION (this);
-  // ID is useless. m_rnti is the same
+
+  uint16_t NSubCh = std::floor(m_BW_RBs / m_nsubCHsize); 
 
   SidelinkCommResourcePool::SubframeInfo SF;
   SF = SimulatorTimeToSubframe(Simulator::Now(), m_slotDuration);
 //  SF.frameNo--;
 //  SF.subframeNo--;
 
-
   NS_LOG_DEBUG("Rx UE: " << m_rnti << ", Tx UE: " << ID << ". RSSI = " << rssi << " dBm measured over " << rbMap.size() << " RBs starting from " <<
-  rbMap.front() << " at SF(" << SF.frameNo << "," << SF.subframeNo << ")");
+  rbMap.front() << " at SF(" << SF.frameNo << "," << SF.subframeNo << ") Number of subchannels is " << NSubCh);
 
   std::vector <int> RBindex;
 
   for (uint16_t j = rbMap.front(); j < rbMap.front()+rbMap.size(); j++)
     RBindex.push_back(j);
-//    NS_LOG_INFO("RB index " << j);
 
   std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> >::iterator RSSIit;
-   NS_LOG_DEBUG("Filling the RSSI list");
-  std::vector <int>::iterator RBindexIT;
-  for (RBindexIT = RBindex.begin(); RBindexIT != RBindex.end(); RBindexIT++)
+  NS_LOG_DEBUG("Filling the RSSI list");
+  for (uint16_t subChannelIndex = 0; subChannelIndex < NSubCh; subChannelIndex++)
   {
-    NS_LOG_DEBUG("Adding RB " << *RBindexIT);
-    if ( m_receivedRSSI.find(*RBindexIT) == m_receivedRSSI.end() )
+    double meanRSSI = 0;
+    uint16_t lowestRB = subChannelIndex*m_nsubCHsize;
+    uint16_t highestRB = (subChannelIndex+1)*m_nsubCHsize;
+    NS_LOG_INFO("Subchannel index: " << subChannelIndex << ", lowest RB: " << lowestRB <<  " highest RB: " << highestRB); 
+    for (std::vector <int>::iterator RBindexIT = RBindex.begin(); RBindexIT != RBindex.end(); RBindexIT++)
     {
-      NS_LOG_DEBUG("RB index not found");
-      RSSImeas tmp;
-      tmp.m_IDs.push_back(ID);
-      tmp.m_rssi = rssi;
-      std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> tmp_elem;
-      tmp_elem.insert (std::pair<SidelinkCommResourcePool::SubframeInfo, RSSImeas> (SF, tmp));
-      m_receivedRSSI.insert (std::pair<uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> > (*RBindexIT,tmp_elem));    
+       if ((*RBindexIT) >= lowestRB && (*RBindexIT) < highestRB)
+       {
+         NS_LOG_DEBUG("Adding RB " << *RBindexIT << " to subchannel " << subChannelIndex);
+         meanRSSI += std::pow(10,rssi/10);
+       }
     }
-    else
+    meanRSSI /= m_nsubCHsize;
+    if (meanRSSI > 0)
     {
-      NS_LOG_DEBUG("RB index found");
-      std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> tmp_elem = m_receivedRSSI[*RBindexIT];
-      std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas>::iterator tmpIT = tmp_elem.find(SF);
-      if (tmpIT != tmp_elem.end())
+      NS_LOG_INFO("Mean RSSI for subchannel " << subChannelIndex << " is " << 10*std::log10(meanRSSI) << " dBm");
+      if ( m_receivedRSSI.find(subChannelIndex) == m_receivedRSSI.end() )
       {
-        NS_LOG_DEBUG("This entry already exists");
-        // Collision on this subchannel, need to keep only the highest RSSI value and add the new ID node
-        if (rssi > tmpIT->second.m_rssi)
-          tmpIT->second.m_rssi = rssi; 
-        tmpIT->second.m_IDs.push_back(ID);
-        m_receivedRSSI[*RBindexIT] = tmp_elem;
-      }  
-      else
-      {
-        NS_LOG_DEBUG("SF not found");
+        NS_LOG_DEBUG("Subchannel not found, creating new map entry");
         RSSImeas tmp;
         tmp.m_IDs.push_back(ID);
-        tmp.m_rssi = rssi;
+        tmp.m_rssi = 10*std::log10(meanRSSI);
+        std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> tmp_elem;
         tmp_elem.insert (std::pair<SidelinkCommResourcePool::SubframeInfo, RSSImeas> (SF, tmp));
-        m_receivedRSSI[*RBindexIT] = tmp_elem;
-      }   
+        m_receivedRSSI.insert (std::pair<uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> > (subChannelIndex,tmp_elem));    
+      }
+      else
+      {
+        NS_LOG_DEBUG("Subchannel found");
+        std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> tmp_elem = m_receivedRSSI[subChannelIndex];
+        std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas>::iterator tmpIT = tmp_elem.find(SF);
+        if (tmpIT != tmp_elem.end())
+        {
+          double RSSIsum = std::pow(10,rssi/10) +  std::pow(10,tmpIT->second.m_rssi/10);
+          NS_LOG_DEBUG("This entry already exists. New RSSI = " << rssi << " dBm. Old RSSI = " << tmpIT->second.m_rssi << " dBm. Sum = " << 10*std::log10(RSSIsum));
+          // Collision on this subchannel, need to keep only the highest RSSI value and add the new ID node
+          //if (meanRSSI > tmpIT->second.m_rssi)
+          tmpIT->second.m_rssi = 10*std::log10(RSSIsum); 
+          tmpIT->second.m_IDs.push_back(ID);
+          m_receivedRSSI[subChannelIndex] = tmp_elem;
+        }  
+        else
+        {
+          NS_LOG_DEBUG("SF not found");
+          RSSImeas tmp;
+          tmp.m_IDs.push_back(ID);
+          tmp.m_rssi = 10*std::log10(meanRSSI);
+          tmp_elem.insert (std::pair<SidelinkCommResourcePool::SubframeInfo, RSSImeas> (SF, tmp));
+          m_receivedRSSI[subChannelIndex] = tmp_elem;
+        }   
+      }
     }
   }
 
@@ -797,11 +827,10 @@ NrV2XUePhy::UnimoreReceivedRssi (double rssi, std::vector <int> rbMap, uint16_t 
     }
   }
 
-
- /* NS_LOG_DEBUG("Printing the new RSSI list");
+/*  NS_LOG_DEBUG("Printing the new RSSI list");
   for (RSSIit = m_receivedRSSI.begin(); RSSIit != m_receivedRSSI.end(); RSSIit++)
   {
-    NS_LOG_DEBUG("RB index " << RSSIit->first);
+    NS_LOG_DEBUG("Subchannel index " << RSSIit->first);
     std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas>::iterator subframeIt;
     for (subframeIt = RSSIit->second.begin(); subframeIt != RSSIit->second.end(); subframeIt++)
     {
@@ -815,13 +844,49 @@ NrV2XUePhy::UnimoreReceivedRssi (double rssi, std::vector <int> rbMap, uint16_t 
     }
   } */
 
-  if (Simulator::Now ().GetSeconds () - m_CBRInterval > m_savingPeriod)
+  if (Simulator::Now ().GetSeconds () - m_CBRCheckingInterval > m_CBRCheckingPeriod)
   {
-    m_CBRInterval = Simulator::Now ().GetSeconds ();
-    NrV2XUePhy::UnimoreEvaluateCBR(SF.frameNo, SF.subframeNo);
+    NS_LOG_INFO("UE " << m_rnti << " evaluating CBR now " << Simulator::Now ().GetSeconds ());
+    m_CBRCheckingInterval = Simulator::Now ().GetSeconds ();
+    NodeContainer GlobalContainer = NodeContainer::GetGlobal(); 
+    for (NodeContainer::Iterator L = GlobalContainer.Begin(); L != GlobalContainer.End(); ++L) 
+    {
+      Ptr<Node> RxNode;
+      Ptr<MobilityModel> mobRX;
+      Vector posRX;
+      RxNode = *L;
+      if (RxNode->GetId() == m_rnti)
+      {
+        mobRX = RxNode->GetObject<MobilityModel>();
+        posRX = mobRX->GetPosition();
+        if (posRX.x >= 1500 && posRX.x <= 3500)
+        {
+          NrV2XUePhy::UnimoreEvaluateCBR(SF.frameNo, SF.subframeNo);
+        }
+        else
+        {
+          NS_LOG_INFO("Rx UE outside of the central section");
+        }
+      }
+    }
   }
 
- // std::cin.get();
+  if (Simulator::Now ().GetSeconds () - NrV2XUePhy::CBRSavingInterval >= m_savingPeriod)
+  {
+    NS_LOG_INFO("Saving CBR now " << Simulator::Now ().GetSeconds ());
+    NrV2XUePhy::CBRSavingInterval = Simulator::Now ().GetSeconds ();
+    std::ofstream CBRfile;
+    CBRfile.open (m_outputPath + "CBR_OutputFile.txt", std::ios_base::app);
+    for (std::vector<CBRInfo>::iterator CBRit = NrV2XUePhy::CBRValues.begin(); CBRit != NrV2XUePhy::CBRValues.end(); CBRit++)
+    {
+      CBRfile << CBRit->nodeId << "," << CBRit->CBRvalue << "," << CBRit->time << std::endl;
+    }
+    CBRfile.close();
+    NrV2XUePhy::CBRValues.clear();
+
+//    std::cin.get();
+  }
+//  std::cin.get();
 }
 
 void
@@ -829,13 +894,16 @@ NrV2XUePhy::UnimoreEvaluateCBR (uint16_t frameNo, uint16_t subframeNo)
 {
   NS_LOG_FUNCTION(this);
  
- // uint16_t N_subCh = std::floor(m_BW_RBs / m_nsubCHsize); // Consider the subchannels or the RBs??
-  uint16_t N_totalRBs = m_BW_RBs;
+  uint16_t N_subCh = std::floor(m_BW_RBs / m_nsubCHsize); // Consider the subchannels according to 3GPP 38.215
+ // uint16_t N_totalRBs = m_BW_RBs;
   uint16_t CBR_window_slots = 100/m_slotDuration;
-  uint16_t N_Resources = CBR_window_slots*N_totalRBs, counter = 0;
-  double RSSIthresh = -88.0; // in dBm
+  uint16_t N_Resources = CBR_window_slots*N_subCh, counter = 0;
 
-  NS_LOG_DEBUG("Evaluating CBR for UE " << m_rnti << " now: SF(" << frameNo << "," << subframeNo << "). Total number of RBs = " << N_Resources);
+//  double RSSIthresh = -88.0; // in dBm
+//  NS_LOG_UNCOND("Ref sensitivity = " << m_rxSensitivity << ", RSSIthresh = " << m_RSSIthresh);
+//  std::cin.get();
+
+  NS_LOG_DEBUG("Evaluating CBR for UE " << m_rnti << " now: SF(" << frameNo << "," << subframeNo << "). Total number of Subchannels = " << N_Resources);
 
   // No need to update the list. It's already up-to-date
   std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> >::iterator RSSIit;
@@ -851,7 +919,7 @@ NrV2XUePhy::UnimoreEvaluateCBR (uint16_t frameNo, uint16_t subframeNo)
         std::cout << (*vectIT) << ", ";
       }
       std::cout << "and RSSI " << subframeIt->second.m_rssi << std::endl;*/
-      if( (! ( (subframeIt->first.frameNo == frameNo) && (subframeIt->first.subframeNo == subframeNo) ) ) && (subframeIt->second.m_rssi >= RSSIthresh) )
+      if( (! ( (subframeIt->first.frameNo == frameNo) && (subframeIt->first.subframeNo == subframeNo) ) ) && (subframeIt->second.m_rssi >= m_RSSIthresh) )
       {
         NS_LOG_DEBUG("Valid CBR entry: SF(" << subframeIt->first.frameNo << "," << subframeIt->first.subframeNo << ") and RSSI = " << subframeIt->second.m_rssi);
         counter++;
@@ -862,7 +930,7 @@ NrV2XUePhy::UnimoreEvaluateCBR (uint16_t frameNo, uint16_t subframeNo)
     }
   }
 
-  if (m_rnti == 3 && false)
+ /* if (m_rnti == 3 && false)
   { 
     NS_LOG_DEBUG("Saving the new RSSI list");
     std::ofstream CBRlist_UE1;
@@ -874,7 +942,7 @@ NrV2XUePhy::UnimoreEvaluateCBR (uint16_t frameNo, uint16_t subframeNo)
       std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas>::iterator subframeIt;
       for (subframeIt = RSSIit->second.begin(); subframeIt != RSSIit->second.end(); subframeIt++)
       {
-        if( (! ( (subframeIt->first.frameNo == frameNo) && (subframeIt->first.subframeNo == subframeNo) ) ) && (subframeIt->second.m_rssi >= RSSIthresh) )
+        if( (! ( (subframeIt->first.frameNo == frameNo) && (subframeIt->first.subframeNo == subframeNo) ) ) && (subframeIt->second.m_rssi >= m_RSSIthresh) )
         {
           CBRlist_UE1 << "SF(" << std::to_string(subframeIt->first.frameNo) << "," << std::to_string(subframeIt->first.subframeNo) << ") with IDs: ";
           for (std::vector<uint16_t>::iterator vectIT = subframeIt->second.m_IDs.begin(); vectIT != subframeIt->second.m_IDs.end(); vectIT++)
@@ -888,13 +956,16 @@ NrV2XUePhy::UnimoreEvaluateCBR (uint16_t frameNo, uint16_t subframeNo)
     }
     CBRlist_UE1 << std::endl;
     CBRlist_UE1.close();
-  }
+  }*/
 
-  NS_LOG_DEBUG("Number of occupied RBs = " << counter << ". Total number of RBs = " << N_Resources );
-  std::ofstream CBRfile;
-  CBRfile.open (m_outputPath + "CBR_OutputFile.txt", std::ios_base::app);
-  CBRfile << m_rnti << "," << counter << "," << (float)counter/N_Resources << "," << Simulator::Now ().GetSeconds () << std::endl;
-  CBRfile.close();
+  NS_LOG_DEBUG("Number of occupied Subchannels = " << counter << ". Total number of Subchannels = " << N_Resources );
+
+  CBRInfo tmp;
+  tmp.nodeId = m_rnti;
+  tmp.CBRvalue = (float)counter/N_Resources;
+  tmp.time = Simulator::Now ().GetSeconds ();
+  
+  NrV2XUePhy::CBRValues.push_back(tmp);
 
 }
 
@@ -915,20 +986,46 @@ NrV2XUePhy::ReceiveNistLteControlMessageList (std::list<Ptr<NistLteControlMessag
       NistV2XSciListElement_s sci = msg2->GetSci ();
       NS_LOG_INFO("Received one SCI_V2X, Now: " << Simulator::Now().GetSeconds() << "s. From " << sci.m_rnti);
       // Sensing - based SPS: 
+      SidelinkCommResourcePool::SubframeInfo reservedSF;
+      SidelinkCommResourcePool::SubframeInfo receivedSF = sci.m_receivedSubframe; // the subframe at which the reservation (the SCI) is received;
+      uint16_t rbStartPssch;
+      uint16_t rbLenPssch;
+      double psschRsrpDb = sci.m_psschRsrpDb;
+      uint32_t CreselRx = std::min (sci.m_CreselRx, uint32_t(1000));
       if ((int) sci.m_reservation != 0)
       {
         NS_LOG_INFO ("sci.m_reservation != 0");
-        SidelinkCommResourcePool::SubframeInfo reservedSF = sci.m_reservedSubframe; // the reserved subframe
-        SidelinkCommResourcePool::SubframeInfo receivedSF = sci.m_receivedSubframe; // the subframe at which the reservation (the SCI) is received
-        uint16_t rbStartPssch = sci.m_rbStartPssch;
-        uint16_t rbLenPssch = sci.m_rbLenPssch;
-        double psschRsrpDb = sci.m_psschRsrpDb;
-        uint32_t CreselRx = std::min (sci.m_CreselRx, uint32_t(1000));
+        reservedSF = sci.m_reservedSubframe; // the reserved subframe
+        rbStartPssch = sci.m_rbStartPssch;
+        rbLenPssch = sci.m_rbLenPssch;
    //     m_uePhySapUser -> ReportPsschRsrpReservation (Simulator::Now(), rbStartPssch-2, rbLenPssch+2, psschRsrpDb, receivedSF, reservedSF, CreselRx, sci.m_rnti, (uint16_t) sci.m_reservation); //Mode 4
-        m_uePhySapUser -> ReportPsschRsrpReservation (Simulator::Now(), rbStartPssch, rbLenPssch, psschRsrpDb, receivedSF, reservedSF, CreselRx, sci.m_rnti, sci.m_reservation); 
+        m_uePhySapUser -> ReportPsschRsrpReservation (Simulator::Now(), rbStartPssch, rbLenPssch, psschRsrpDb, receivedSF, reservedSF, CreselRx, sci.m_rnti, sci.m_reservation,0,0); 
+        NS_LOG_INFO("Received SCI_V2X with reservation at SF(" << receivedSF.frameNo << "," << receivedSF.subframeNo << ") with reserved SF(" << reservedSF.frameNo << "," << reservedSF.subframeNo << "), RBstart: " 
+        << rbStartPssch << ", RBLen: " << rbLenPssch << ", PSSCH-RSRP: " << psschRsrpDb << "dB" );
+        if (sci.m_announceNextTxion)
+        {
+          rbStartPssch = sci.m_secondRbStartPssch;
+          rbLenPssch = sci.m_secondRbLenPssch;
+          reservedSF = sci.m_secondSubframe;
+          m_uePhySapUser -> ReportPsschRsrpReservation (Simulator::Now(), rbStartPssch, rbLenPssch, psschRsrpDb, receivedSF, reservedSF, CreselRx, sci.m_rnti, sci.m_timeDiff,1,1); 
+          NS_LOG_INFO("Received SCI_V2X with reservation at SF(" << receivedSF.frameNo << "," << receivedSF.subframeNo << ") with reserved SF(" << reservedSF.frameNo << "," << reservedSF.subframeNo << "), RBstart: " 
+          << rbStartPssch << ", RBLen: " << rbLenPssch << ", PSSCH-RSRP: " << psschRsrpDb << "dB" );
+          reservedSF = sci.m_secondReservedSubframe;
+          m_uePhySapUser -> ReportPsschRsrpReservation (Simulator::Now(), rbStartPssch, rbLenPssch, psschRsrpDb, receivedSF, reservedSF, CreselRx, sci.m_rnti, sci.m_reservation + sci.m_timeDiff,1,0); 
+          NS_LOG_INFO("Received SCI_V2X with reservation at SF(" << receivedSF.frameNo << "," << receivedSF.subframeNo << ") with reserved SF(" << reservedSF.frameNo << "," << reservedSF.subframeNo << "), RBstart: " 
+          << rbStartPssch << ", RBLen: " << rbLenPssch << ", PSSCH-RSRP: " << psschRsrpDb << "dB" );
+        }
+      }
+      else if (sci.m_announceNextTxion) 
+      {
+        rbStartPssch = sci.m_secondRbStartPssch;
+        rbLenPssch = sci.m_secondRbLenPssch;
+        reservedSF = sci.m_secondSubframe;
+        m_uePhySapUser -> ReportPsschRsrpReservation (Simulator::Now(), rbStartPssch, rbLenPssch, psschRsrpDb, receivedSF, reservedSF, CreselRx, sci.m_rnti, sci.m_timeDiff,1,1); 
         NS_LOG_INFO("Received SCI_V2X with reservation at SF(" << receivedSF.frameNo << "," << receivedSF.subframeNo << ") with reserved SF(" << reservedSF.frameNo << "," << reservedSF.subframeNo << "), RBstart: " 
         << rbStartPssch << ", RBLen: " << rbLenPssch << ", PSSCH-RSRP: " << psschRsrpDb << "dB" );
       }
+//      std::cin.get();
       //must check if the destination is one to monitor
       std::list <uint32_t>::iterator it;
       bool for_me = false; //dummy
@@ -952,14 +1049,10 @@ NrV2XUePhy::ReceiveNistLteControlMessageList (std::list<Ptr<NistLteControlMessag
               V2XSidelinkGrantInfo v2xgrantInfo;
               v2xgrantInfo.m_v2x_grant_received = true;
               v2xgrantInfo.m_grant.m_rnti = sci.m_rnti;
-              v2xgrantInfo.m_grant.m_resPscch = sci.m_resPscch;
               v2xgrantInfo.m_grant.m_rbStartPscch = sci.m_rbStartPscch;
               v2xgrantInfo.m_grant.m_rbLenPscch = sci.m_rbLenPscch;
               v2xgrantInfo.m_grant.m_rbStartPssch = sci.m_rbStartPssch;
               v2xgrantInfo.m_grant.m_rbLenPssch = sci.m_rbLenPssch;
-              //v2xgrantInfo.m_grant.m_subframeInitialTx = sci.m_subframeInitialTx;  
-              v2xgrantInfo.m_grant.m_SFGap = sci.m_SFGap;         
-              v2xgrantInfo.m_grant.m_subframeInitialTx = 0; // zero offset: SCI and DATA are sent during the same subframe
               v2xgrantInfo.m_grant.m_groupDstId = sci.m_groupDstId;
               v2xgrantInfo.m_grant.m_mcs = sci.m_mcs;
               v2xgrantInfo.m_grant.m_tbSize = sci.m_tbSize;
@@ -1105,7 +1198,7 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
               rxIt->subframe.subframeNo++;
               NS_LOG_INFO (this << " Subframe Rx" << rxIt->subframe.frameNo << "/" << rxIt->subframe.subframeNo << ": rbStart=" << (uint32_t) rxIt->rbStart << ", rbLen=" << (uint32_t) rxIt->nbRb);
             }*/
-            grantIt->second.m_v2xTx = it->m_pool->GetV2XSlTransmissions (frameNo, subframeNo, grantIt->second.m_grant.m_rbStartPscch, grantIt->second.m_grant.m_rbStartPssch, grantIt->second.m_grant.m_rbLenPssch,  grantIt->second.m_grant.m_rbLenPscch, grantIt->second.m_grant.m_subframeInitialTx, grantIt->second.m_grant.m_SFGap);
+            grantIt->second.m_v2xTx = it->m_pool->GetV2XSlTransmissions (frameNo, subframeNo, grantIt->second.m_grant.m_rbStartPscch, grantIt->second.m_grant.m_rbStartPssch, grantIt->second.m_grant.m_rbLenPssch,  grantIt->second.m_grant.m_rbLenPscch, 0, 0);
             for (rxIt = grantIt->second.m_v2xTx.begin (); rxIt != grantIt->second.m_v2xTx.end (); rxIt++)
             {
               rxIt->subframe.frameNo++;
@@ -1131,8 +1224,6 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
             {
               rbMapPssch.push_back (i);
             }
-           // NS_LOG_DEBUG("Adding Expected SL Tb at SF(" << frameNo << "," << subframeNo << ")");
-            //  m_sidelinkSpectrumPhy->AddExpectedTb (grantIt->second.m_grant.m_rnti, grantIt->second.m_grant.m_groupDstId, (grantIt->second.m_v2xTx.size() % 2 == 0 && grantIt->second.m_grant.m_SFGap > 0) || grantIt->second.m_grant.m_SFGap == 0, grantIt->second.m_grant.m_tbSize, grantIt->second.m_grant.m_mcs, rbMapPssch, (2 - grantIt->second.m_v2xTx.size () % 2));
             //remove reception information
             grantIt->second.m_v2xTx.erase (rxIt);
           }
@@ -1276,30 +1367,29 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
               //this is the first transmission of PSCCH
               v2xgrantInfo.m_v2x_grant_received = true;
               v2xgrantInfo.m_grant.m_rnti = sci.m_rnti;
-              v2xgrantInfo.m_grant.m_resPscch = sci.m_resPscch;
               v2xgrantInfo.m_grant.m_rbStartPscch = sci.m_rbStartPscch;
               v2xgrantInfo.m_grant.m_rbLenPscch = sci.m_rbLenPscch;
               v2xgrantInfo.m_grant.m_rbStartPssch = sci.m_rbStartPssch;
               v2xgrantInfo.m_grant.m_rbLenPssch = sci.m_rbLenPssch;
               NS_LOG_INFO("Reserved RBs " << (int)sci.m_rbLenPssch << " occupied " << (int)sci.m_rbLenPssch_TB);
-              //v2xgrantInfo.m_grant.m_subframeInitialTx = sci.m_subframeInitialTx;  
-              v2xgrantInfo.m_grant.m_SFGap = sci.m_SFGap;         
               //grantInfo.m_grant.m_trp = sci.m_trp;
               v2xgrantInfo.m_grant.m_groupDstId = sci.m_groupDstId;
               v2xgrantInfo.m_grant.m_mcs = sci.m_mcs;
               v2xgrantInfo.m_grant.m_tbSize = sci.m_tbSize;
               v2xgrantInfo.m_grant.frameNo = frameNo;
               v2xgrantInfo.m_grant.subframeNo = subframeNo;
-              //v2xgrantInfo.m_v2xTx = m_slTxPoolInfo.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, sci.m_rbStartPscch, sci.m_rbStart, sci.m_rbLen, 0, sci.m_SFGap);
-              v2xgrantInfo.m_v2xTx = m_slTxPoolInfo.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, sci.m_rbStartPscch, sci.m_rbStartPssch, sci.m_rbLenPssch_TB, sci.m_rbLenPscch, 0, sci.m_SFGap);
+
+              v2xgrantInfo.m_v2xTx = m_slTxPoolInfo.m_pool->GetV2XSlTransmissions (frameNo, subframeNo, sci.m_rbStartPscch, sci.m_rbStartPssch, sci.m_rbLenPssch_TB, sci.m_rbLenPscch, 0, 0);
 
               // Saving the PHY layer information for every node
               if (TransmissionEnabled)
 	      {
                 TxPacketInfo tmp;
                 tmp.txTime = Simulator::Now ().GetSeconds ();
+                tmp.genTime = sci.m_genTime;
                 tmp.nodeId = sci.m_rnti;
                 tmp.packetId = sci.m_packetID;
+                tmp.txIndex = sci.m_TxIndex;
                 tmp.txFrame.frameNo = frameNo;
                 tmp.txFrame.subframeNo = subframeNo;
                 tmp.Cresel = sci.m_CreselRx;
@@ -1319,11 +1409,21 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
               if (Simulator::Now ().GetSeconds () - NrV2XUePhy::prevPrintTime >= m_savingPeriod)
               {
                 NrV2XUePhy::prevPrintTime = Simulator::Now ().GetSeconds (); 
-            /*    std::ofstream phyDebugALL;
+
+                std::ofstream phyDebugShort;
+                phyDebugShort.open (m_outputPath + "phyDebugShort.txt", std::ios_base::app);
+                for (std::vector<TxPacketInfo>::iterator txIT = NrV2XUePhy::txPackets.begin(); txIT != NrV2XUePhy::txPackets.end(); txIT++)
+                {
+                  phyDebugShort << txIT->nodeId << "," <<  txIT->packetId << "," << txIT->genTime << "," << txIT->txIndex << "," << txIT->txTime << "," << txIT->txFrame.frameNo << "," << txIT->txFrame.subframeNo << "," << txIT->Cresel << "," << txIT->RRI
+                  << "," << txIT->psschRbStart << "," << txIT->psschRbLen << "," << txIT->psschRbLenTb << "," << txIT->pscchRbStart << "," << txIT->pscchRbLen << std::endl;
+                }
+                phyDebugShort.close ();
+
+         /*       std::ofstream phyDebugALL;
                 phyDebugALL.open (m_outputPath + "phyDebugALL.txt", std::ios_base::app);
                 for (std::vector<TxPacketInfo>::iterator txIT = NrV2XUePhy::txPackets.begin(); txIT != NrV2XUePhy::txPackets.end(); txIT++)
                 {
-                  phyDebugALL << "NODE " << txIT->nodeId << " tx packet " <<  txIT->packetId << " at time: " << txIT->txTime << ". Tx SF(" << txIT->txFrame.frameNo << "," << txIT->txFrame.subframeNo << "), Reselection Counter = " << txIT->Cresel << ", RRI = " << txIT->RRI
+                  phyDebugALL << "NODE " << txIT->nodeId << ", packet " <<  txIT->packetId << " (" << txIT->genTime << ") @ tx index: " <<  txIT->txIndex << " at time: " << txIT->txTime << ". Tx SF(" << txIT->txFrame.frameNo << "," << txIT->txFrame.subframeNo << "), Reselection Counter = " << txIT->Cresel << ", RRI = " << txIT->RRI
                   << ", (PSSCH) RBs start " << txIT->psschRbStart << ", (PSSCH) reservation length = " << txIT->psschRbLen << " RBs, (PSSCH) occupied length = " << txIT->psschRbLenTb << " RBs, (PSCCH) RBs start " << txIT->pscchRbStart << ", (PSCCH) reservation length = " << txIT->pscchRbLen << " RBs\r\n";
                 }
                 phyDebugALL.close ();*/
@@ -1410,6 +1510,7 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
             else if (TransmissionEnabled)
             {  
 	      NS_LOG_INFO("I'm starting to transmit...");
+//              std::cin.get();
               std::vector<int> v2xRbMask;
 //              std::merge(slRb.begin(),slRb.end(),rbMask.begin(),rbMask.end(),std::back_inserter (v2xRbMask)); // Mode 4
               v2xRbMask = rbMask; //Mode 2 (SCI and TB are on the same PRBs)
@@ -1419,7 +1520,7 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
               SetSubChannelsForTransmission (v2xRbMask); // MERGE THE PSCCH and PSSCH rb mask
             //  m_uplinkSpectrumPhy->StartTxV2XSlDataFrame (pb, ctrlMsg, UL_DATA_DURATION, m_slTxPoolInfo.m_currentV2XGrants.begin()->second.m_grant.m_groupDstId); //TODO: built new method for v2x
               m_uplinkSpectrumPhy->StartTxV2XSlDataFrame (pb, ctrlMsg, m_SL_DATA_DURATION, m_slTxPoolInfo.m_currentV2XGrants.begin()->second.m_grant.m_groupDstId); //TODO: built new method for v2x
-
+             // std::cin.get();
               // store Tx info
               SidelinkCommResourcePool::SubframeInfo currentSFInfo;
               currentSFInfo.frameNo = frameNo; 
@@ -1460,6 +1561,7 @@ NrV2XUePhy::SubframeIndication (uint32_t frameNo, uint32_t subframeNo)
   // NS_LOG_DEBUG("TTI " << GetTti() << " SL duration " << m_SL_DATA_DURATION.GetNanoSeconds());
   // Schedule next subframe indication (GetTti() is inherited from the nist-lte-phy class)
   Simulator::Schedule (Seconds (GetTti ()), &NrV2XUePhy::SubframeIndication, this, frameNo, subframeNo);
+
 }
 
 
@@ -1539,7 +1641,7 @@ NrV2XUePhy::DoSynchronizeWithEnb (uint16_t cellId)
 }
 
 void
-NrV2XUePhy::DoSetDlBandwidth (uint8_t dlBandwidth)
+NrV2XUePhy::DoSetDlBandwidth (uint16_t dlBandwidth)
 {
   NS_LOG_FUNCTION (this << (uint32_t) dlBandwidth);
   if (m_dlBandwidth != dlBandwidth or !m_dlConfigured)
@@ -1561,7 +1663,7 @@ NrV2XUePhy::DoSetDlBandwidth (uint8_t dlBandwidth)
             }
         }
 
-      m_noisePsd = NistLteSpectrumValueHelper::CreateNoisePowerSpectralDensity (m_dlEarfcn, m_dlBandwidth, m_noiseFigure);
+      m_noisePsd = NrV2XSpectrumValueHelper::CreateNoisePowerSpectralDensity (m_dlEarfcn, m_dlBandwidth, m_noiseFigure);
       m_downlinkSpectrumPhy->SetNoisePowerSpectralDensity (m_noisePsd);
       m_downlinkSpectrumPhy->GetChannel ()->AddRx (m_downlinkSpectrumPhy);
     }
@@ -1570,7 +1672,7 @@ NrV2XUePhy::DoSetDlBandwidth (uint8_t dlBandwidth)
 
 
 void 
-NrV2XUePhy::DoConfigureUplink (uint16_t ulEarfcn, uint8_t ulBandwidth)
+NrV2XUePhy::DoConfigureUplink (uint16_t ulEarfcn, uint16_t ulBandwidth)
 {
   NS_LOG_FUNCTION (this << ulEarfcn << (uint16_t) ulBandwidth);
   m_ulEarfcn = ulEarfcn;
@@ -1579,7 +1681,7 @@ NrV2XUePhy::DoConfigureUplink (uint16_t ulEarfcn, uint8_t ulBandwidth)
 
   //configure sidelink with UL
   if (m_sidelinkSpectrumPhy) {
-    m_slNoisePsd = NistLteSpectrumValueHelper::CreateNoisePowerSpectralDensity (m_ulEarfcn, m_ulBandwidth, m_noiseFigure);
+    m_slNoisePsd = NrV2XSpectrumValueHelper::CreateNoisePowerSpectralDensity (m_ulEarfcn, m_ulBandwidth, m_noiseFigure);
     m_sidelinkSpectrumPhy->SetNoisePowerSpectralDensity (m_slNoisePsd);
     m_sidelinkSpectrumPhy->GetChannel ()->AddRx (m_sidelinkSpectrumPhy);
   }

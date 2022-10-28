@@ -33,6 +33,8 @@
 #include "nist-sl-pool.h"
 #include "nist-lte-common.h"
 #include <map>
+#include <ns3/random-variable-stream.h>
+
 
 namespace ns3 {
 
@@ -42,9 +44,9 @@ uint32_t
 SubtractFrames (uint16_t frameAhead, uint16_t frame, uint16_t subframeAhead, uint16_t subframe)
 {
   int diff;
+//  NS_LOG_UNCOND("SF_ahead(" << frameAhead << "," << subframeAhead << ") SF(" << frame << "," << subframe << ")");
   NS_ASSERT_MSG((frameAhead <= 1024) && (frame <= 1024), "Frame number must be smaller than 1024");
   NS_ASSERT_MSG((subframeAhead <= 10) && (subframe <= 10), "Subframe number must be smaller than 10");
-//  NS_LOG_UNCOND("SF_ahead(" << frameAhead << "," << subframeAhead << ") SF(" << frame << "," << subframe << ")");
   if (frameAhead == frame) 
   {
     NS_ASSERT_MSG(subframeAhead >= subframe, "The ahead frame is not actually ahead");
@@ -95,6 +97,104 @@ SimulatorTimeToSubframe (Time time, double slotDuration)
    return SF;
 }
 
+
+uint32_t EvaluateSlotsDifference(SidelinkCommResourcePool::SubframeInfo SF1, SidelinkCommResourcePool::SubframeInfo SF2, uint32_t maxDifference)
+{
+   uint32_t SlotsDiff;
+
+   if ((uint32_t) abs((int)SF1.frameNo - (int)SF2.frameNo) > maxDifference)
+   {
+     if (SF1.frameNo > SF2.frameNo)
+       SlotsDiff = abs((int)((SF1.frameNo)*10 + SF1.subframeNo) - (int)((SF2.frameNo+1024)*10 + SF2.subframeNo) );
+     else
+       SlotsDiff = abs((int)((SF1.frameNo+1024)*10 + SF1.subframeNo) - (int)((SF2.frameNo)*10 + SF2.subframeNo) );
+   }
+   else
+     SlotsDiff = abs((int)((SF1.frameNo)*10 +  SF1.subframeNo) - (int)((SF2.frameNo)*10 + SF2.subframeNo) );
+
+   return SlotsDiff;
+}
+
+uint32_t 
+ComputeResidualCSRs (std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> > L1)
+{
+   uint32_t nCSR = 0;
+   std::map<uint16_t,std::list<SidelinkCommResourcePool::SubframeInfo> >::iterator mapIt;
+   for (mapIt = L1.begin (); mapIt != L1.end (); mapIt++)
+      {
+          nCSR += (*mapIt).second.size ();
+      }  
+   return nCSR;
+}
+
+
+uint16_t
+GetTproc0 (uint16_t numerologyIndex)
+{
+   uint16_t T_proc_0; //Defined in slots
+   switch (numerologyIndex)
+   {
+     case 0:
+       T_proc_0 = 1;
+       break;
+     case 1:
+       T_proc_0 = 1;
+       break;
+     case 2:
+       T_proc_0 = 2;
+       break;
+     case 3:
+       T_proc_0 = 4;
+       break;
+   }
+
+   return T_proc_0;
+}
+
+
+uint16_t
+GetTproc1 (uint16_t numerologyIndex)
+{
+   uint16_t T_proc_1; //Defined in slots
+   switch (numerologyIndex)
+   {
+     case 0:
+       T_proc_1 = 3;
+       break;
+     case 1:
+       T_proc_1 = 5;
+       break;
+     case 2:
+       T_proc_1 = 9;
+       break;
+     case 3:
+       T_proc_1 = 17;
+       break;
+   }
+
+   return T_proc_1;
+}
+
+
+uint32_t
+GetCresel (double RRI)
+{
+   Ptr<UniformRandomVariable> uniformCresel = CreateObject<UniformRandomVariable> ();
+   uint32_t Cresel;
+   if (RRI >= 100)
+   {
+     Cresel =  uniformCresel ->  GetInteger (5,15); //Get a random integer in the interval [min, max]
+     //V2XGrant.m_Cresel = 10;
+   }      
+   else
+   {  //TODO check if it works
+     uint16_t Cresel_bound;
+     Cresel_bound = 100 / std::max(20, (int)RRI);
+     Cresel = uniformCresel ->  GetInteger (5*Cresel_bound,15*Cresel_bound); //Get a random integer in the interval [min, max]
+     NS_LOG_DEBUG("RRI " << RRI << ", bound: " << Cresel_bound << ", Cresel: " << Cresel);
+   }       
+   return Cresel;
+}
 
 /*
 * Maximum transmission bandwidth in RBs, taken from 3GPP TS 38.101
@@ -158,14 +258,19 @@ GetRbsFromBW (uint16_t SCS, uint32_t BW)
 
 }
 
+/*
+Reference sensitivity of NR-V2X bands
+(Table 7.3E.2.1 from 3GPP TS 38.101-1)
+*/
 
 double
 GetRefSensitivity (uint16_t SCS, uint32_t BW)
 {
    std::map <uint16_t, std::map<uint16_t, double> > RefSens;
    std::map<uint16_t, double> tmp;
-
-   NS_ASSERT_MSG((BW >= 10) && (BW <= 40), "Bandwidth must be between 10 and 40 MHz");
+   
+   // Extended from 40MHz to 50MHz in order to simulate the frequency-reuse scheme
+   NS_ASSERT_MSG((BW >= 10) && (BW <= 50), "Bandwidth must be between 10 and 50 MHz");
 
    tmp = { {15, -92.5}, {30, -92.1}, {60, -92.9} };
    RefSens.insert(std::pair <uint16_t, std::map<uint16_t, double> > (10, tmp));
@@ -179,6 +284,9 @@ GetRefSensitivity (uint16_t SCS, uint32_t BW)
    tmp = { {15, -86.1}, {30, -86.2}, {60, -86.4} };
    RefSens.insert(std::pair <uint16_t, std::map<uint16_t, double> > (40, tmp));
 
+   tmp = { {15, -86.1}, {30, -86.2}, {60, -86.4} };
+   RefSens.insert(std::pair <uint16_t, std::map<uint16_t, double> > (50, tmp));   // Fake value added for the simulation of the frequency-reuse scheme
+
    //Print the table
    for (std::map <uint16_t, std::map<uint16_t, double> >::iterator IT = RefSens.begin(); IT != RefSens.end(); IT++)
    {
@@ -191,6 +299,38 @@ GetRefSensitivity (uint16_t SCS, uint32_t BW)
 
 }
 
+
+/* Return the value immediately larger than the reference sensitivity
+see TS 38.331 "sl-ThreshS-RSSI-CBR" parameter */
+double
+GetRSSIthreshold (double RXsensitivity)
+{
+   double InitialValue = -112.0, FinalValue;
+   for (int i = 0; i < 45; i++)
+   {
+     NS_LOG_DEBUG(RXsensitivity << ", " << InitialValue + i*2);
+     if ((InitialValue + i*2) > RXsensitivity)
+     {
+       FinalValue = InitialValue + i*2;
+       break;
+     }
+   }
+
+   return FinalValue;
+}
+
+
+double
+GetGeoCellSize (uint32_t SubChannelSize, uint16_t BW_RBs, double ReuseDistance, uint32_t *NumberGeoCells)
+{
+   double GeoCellSize; // in meters
+
+   (*NumberGeoCells) = std::floor(BW_RBs / SubChannelSize);  // Number of geo-cells within a cluster
+
+   GeoCellSize = ReuseDistance / (*NumberGeoCells);
+
+   return GeoCellSize;
+}
 
 
 } //namespace ns3

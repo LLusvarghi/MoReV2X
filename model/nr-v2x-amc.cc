@@ -158,7 +158,7 @@ int
 NrV2XAmc::GetSlSubchAndTbSizeFromMcs (uint32_t PDUsize, int mcs, uint16_t subchannelSize, uint16_t channelBW_RBs, uint16_t *TBlen_subChannels, uint16_t *TBlen_RBs)
 {
   NS_LOG_FUNCTION (this);
-
+  NS_ASSERT_MSG(subchannelSize >= 10, "Subchannel size must be larger or equal than 10 RBs");
   uint32_t PDUsize_bits = PDUsize * 8;
 
   uint16_t Nsubchannels = std::floor(channelBW_RBs/subchannelSize);
@@ -196,7 +196,7 @@ NrV2XAmc::GetSlSubchAndTbSizeFromMcs (uint32_t PDUsize, int mcs, uint16_t subcha
     alloc_subchannels = j;
     Nre_pssch = (Nre_pssch_PRB * j * subchannelSize) - Nre_pscch - SecondStageSCI; 
     TBStemp = std::round(Nre_pssch * (TargetCodeRateForMcs_1[mcs]/1024) * ModulationOrderForMcs_1[mcs]);
-    //NS_LOG_DEBUG("TBStemp = " << TBStemp);
+    NS_LOG_DEBUG("Alloc subchannels " << alloc_subchannels << " TBStemp = " << TBStemp);
     uint16_t n;
     uint32_t Ninfo_prime;
     if (TBStemp <= 3824)
@@ -256,7 +256,7 @@ NrV2XAmc::GetSlSubchAndTbSizeFromMcs (uint32_t PDUsize, int mcs, uint16_t subcha
     alloc_RBs = j;
     Nre_pssch = (Nre_pssch_PRB * j) - Nre_pscch - SecondStageSCI; 
     TBStemp = std::round(Nre_pssch * (TargetCodeRateForMcs_1[mcs]/1024) * ModulationOrderForMcs_1[mcs]);
-    //NS_LOG_DEBUG("TBStemp = " << TBStemp);
+//    NS_LOG_DEBUG("TBStemp = " << TBStemp);
     uint16_t n;
     uint32_t Ninfo_prime;
     if (TBStemp <= 3824)
@@ -305,10 +305,13 @@ NrV2XAmc::GetSlSubchAndTbSizeFromMcs (uint32_t PDUsize, int mcs, uint16_t subcha
   NS_LOG_DEBUG("Over: PDU " << PDUsize << " B, TBS = " << TBS/8 << " B with " << alloc_RBs << " RBs");
   *TBlen_RBs = alloc_RBs;
 
+// std::cin.get();
+ return TBS; // Original return function
 
-//  std::cin.get();
-
-  return TBS;
+  /* Next block of three instructions is just for testing frequency reuse*/
+ /* *TBlen_subChannels = 2;
+  *TBlen_RBs = 2;
+  return 10000; */
 }
 
 

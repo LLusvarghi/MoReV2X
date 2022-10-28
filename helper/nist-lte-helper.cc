@@ -45,7 +45,7 @@
 #include <iostream>
 #include <fstream>
 #include <ns3/buildings-propagation-loss-model.h>
-#include <ns3/nist-lte-spectrum-value-helper.h>
+#include <ns3/nr-v2x-spectrum-value-helper.h>
 #include <cfloat>
 
 namespace ns3 {
@@ -658,7 +658,7 @@ NistLteHelper::EnableLogComponents (void)
 
   LogComponentEnable ("NistLtePhy", LOG_LEVEL_ALL);
   LogComponentEnable ("NrV2XUePhy", LOG_LEVEL_ALL);
-  LogComponentEnable ("NistLteSpectrumValueHelper", LOG_LEVEL_ALL);
+  LogComponentEnable ("NrV2XSpectrumValueHelper", LOG_LEVEL_ALL);
   LogComponentEnable ("NrV2XSpectrumPhy", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteInterference", LOG_LEVEL_ALL);
   LogComponentEnable ("NistLteChunkProcessor", LOG_LEVEL_ALL);
@@ -852,7 +852,7 @@ NistLteHelper::CalcSidelinkRsrp (double txPower, double ulEarfcn, double ulBandw
     {
       rbMask.push_back (i);
     }
-  NistLteSpectrumValueHelper psdHelper;
+  NrV2XSpectrumValueHelper psdHelper;
   Ptr<SpectrumValue> psd = psdHelper.CreateUlTxPowerSpectralDensity (ulEarfcn, ulBandwidth, txPower, rbMask, 1.0, 15, 4, false);
   
   double rsrp= DoCalcRsrp (lossModel, psd, txDevice->GetObject<NistLteUeNetDevice> ()->GetPhy()->GetUlSpectrumPhy (), rxDevice->GetObject<NistLteUeNetDevice> ()->GetPhy()->GetUlSpectrumPhy ());

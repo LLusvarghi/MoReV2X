@@ -249,14 +249,14 @@ protected:
    * The UL bandwidth in number of PRBs.
    * Specified by the upper layer through CPHY SAP.
    */
-  uint8_t m_ulBandwidth;
+  uint16_t m_ulBandwidth;
   /**
    * The DL bandwidth in number of PRBs.
    * Specified by the upper layer through CPHY SAP.
    */
-  uint8_t m_dlBandwidth;
+  uint16_t m_dlBandwidth;
   /// The RB gruop size according to the bandwidth.
-  uint8_t m_rbgSize;
+  uint16_t m_rbgSize;
   /**
    * The downlink carrier frequency.
    * Specified by the upper layer through CPHY SAP.

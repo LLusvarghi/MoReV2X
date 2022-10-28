@@ -356,8 +356,8 @@ private:
   void DoStartCellSearch (uint16_t dlEarfcn);
   void DoSynchronizeWithEnb (uint16_t cellId);
   void DoSynchronizeWithEnb (uint16_t cellId, uint16_t dlEarfcn);
-  void DoSetDlBandwidth (uint8_t ulBandwidth);
-  void DoConfigureUplink (uint16_t ulEarfcn, uint8_t ulBandwidth);
+  void DoSetDlBandwidth (uint16_t ulBandwidth);
+  void DoConfigureUplink (uint16_t ulEarfcn, uint16_t ulBandwidth);
   void DoConfigureReferenceSignalPower (int8_t referenceSignalPower);
   void DoSetRnti (uint16_t rnti);
   void DoSetTransmissionMode (uint8_t txMode);
@@ -586,7 +586,8 @@ private:
  uint16_t m_BW_RBs;
  double m_slotDuration;
  uint16_t m_SCS;
- 
+ double m_rxSensitivity;
+ double m_RSSIthresh;
  bool m_IBE;
 
  uint16_t m_currentMCS;
@@ -595,9 +596,6 @@ private:
   {
     //fields common with SL_DCI
     uint16_t m_rnti;
-    uint16_t m_resPscch; // m in specifications
-    uint16_t m_resPssch; // m in specifications
-    uint8_t m_tpc;
 
     uint32_t frameNo;
     uint32_t subframeNo;
@@ -613,10 +611,6 @@ private:
     //other fields
     uint8_t m_mcs;
     uint32_t m_tbSize;
-    
-    bool m_adjacency;
-    uint32_t m_subframeInitialTx; //the subframe at which the first tx is to be performed
-    uint8_t m_SFGap; //Time gap [subframes] between initial transmission and retransmission
   };
 
   struct SidelinkGrantInfo
@@ -640,8 +634,10 @@ private:
   struct TxPacketInfo
   {
     double txTime;
+    double genTime;
     uint32_t nodeId;
     uint64_t packetId;
+    uint16_t txIndex;
     uint32_t Cresel;
     uint16_t RRI;
     uint16_t psschRbStart;
@@ -712,7 +708,19 @@ private:
      double m_rssi;
    };
 
-  double m_CBRInterval;
+
+  double m_CBRCheckingInterval;
+  double m_CBRCheckingPeriod;
+
+  struct CBRInfo
+  {
+    uint32_t nodeId;
+    double CBRvalue;
+    double time;
+  };
+
+  static std::vector<CBRInfo> CBRValues;
+  static double CBRSavingInterval;
 
   std::map <uint16_t,std::map<SidelinkCommResourcePool::SubframeInfo, RSSImeas> > m_receivedRSSI;
 
@@ -720,12 +728,6 @@ private:
 
   std::string m_outputPath;
   double m_savingPeriod;
-
-  /**
-  * Measurement information for PSSCH-RSRP for Mode 4 3GPP autonomous resource selection algorithm
-  */
-  double m_psschRsrpThresh;
-
 
   /**
    * Summary results of measuring a specific SyncRef. Used for layer-1 filtering.

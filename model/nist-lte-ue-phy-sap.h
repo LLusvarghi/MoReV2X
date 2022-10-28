@@ -120,7 +120,7 @@ public:
   * \brief Report PSSCH-RSRP measurements to MAC layer for V2V Mode 4, see TS 36.213 cl.14.1.1.6, Rel' 14
   * \param TODO FIXME NEW for V2X
   */
-  virtual void ReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, uint16_t RRI) = 0;
+  virtual void ReportPsschRsrpReservation (Time time, uint16_t rbStart, uint16_t rbLen, double rsrpDb, SidelinkCommResourcePool::SubframeInfo receivedSubframe, SidelinkCommResourcePool::SubframeInfo reservedSubframe, uint32_t CreselRx, uint32_t nodeId, double RRI, bool isReTx, bool isSameTB) = 0;
 
 /**
   * \brief Store the transmission events to assist the Sensing-Based SPS scheme of Mode 4 

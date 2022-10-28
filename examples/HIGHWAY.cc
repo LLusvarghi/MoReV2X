@@ -490,7 +490,7 @@ main (int argc, char *argv[])
 //  LogComponentEnable("NrV2XAmc", LOG_LEVEL_ALL);
 //  LogComponentEnable("NistLteRlcUm", LOG_LEVEL_ALL);
 //  LogComponentEnable("NistLteUeRrc", LOG_LEVEL_ALL);
- // LogComponentEnable("NistLteSpectrumValueHelper", LOG_LEVEL_ALL); //TODO
+ // LogComponentEnable("NrV2XSpectrumValueHelper", LOG_LEVEL_ALL); //TODO
 //  LogComponentEnable("NistLteSlInterference", LOG_LEVEL_ALL); 
   //LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
 //--------------------------------------------------------------------------------------------

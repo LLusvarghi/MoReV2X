@@ -107,17 +107,24 @@ NistLteRlcUm::DoTransmitPdcpPdu (Ptr<Packet> p)
 
       /** Store PDCP PDU */
 
-
-
       NistLteRlcSduNistStatusTag tag;
       tag.SetNistStatus (NistLteRlcSduNistStatusTag::FULL_SDU);
       p->AddPacketTag (tag);
 
       NS_LOG_LOGIC ("Tx Buffer: New packet added");
       m_txBuffer.push_back (p);
+      NS_LOG_LOGIC ("txBufferSize = " << m_txBufferSize);
       m_txBufferSize += p->GetSize ();
       NS_LOG_LOGIC ("NumOfBuffers = " << m_txBuffer.size() );
       NS_LOG_LOGIC ("txBufferSize = " << m_txBufferSize);
+
+       /* LOG the buffer size*/
+   /*   std::ofstream RLCbuffer;
+      RLCbuffer.open (m_outputPath + "RLCbufferSize.txt", std::ios_base::app);
+      RLCbuffer << "UE " << m_rnti << " at time " << Simulator::Now().GetSeconds() << ", NumOfBuffers = " << m_txBuffer.size() << ", txBufferSize = " << m_txBufferSize << std::endl;
+      RLCbuffer.close();
+      NS_LOG_UNCOND("-------------------Remember to disable this file in NistLteRlcUm");*/
+
     }
   else
     {
@@ -174,7 +181,9 @@ NistLteRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harq
   NS_LOG_LOGIC ("First SDU size    = " << (*(m_txBuffer.begin()))->GetSize ());
   NS_LOG_LOGIC ("Next segment size = " << nextSegmentSize);
   NS_LOG_LOGIC ("Remove SDU from TxBuffer");
+  Ptr<Packet> copyPacket = (*(m_txBuffer.begin ()))->Copy ();
   Ptr<Packet> firstSegment = (*(m_txBuffer.begin ()))->Copy ();
+  NS_LOG_LOGIC ("txBufferSize      = " << m_txBufferSize );
   m_txBufferSize -= (*(m_txBuffer.begin()))->GetSize ();
   NS_LOG_LOGIC ("txBufferSize      = " << m_txBufferSize );
   m_txBuffer.erase (m_txBuffer.begin ());
@@ -399,7 +408,8 @@ NistLteRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harq
   params.srcL2Id = m_srcL2Id;
   params.dstL2Id = m_dstL2Id;
   params.layer = layer;
-  params.harqProcessId = harqId;
+//  params.harqProcessId = harqId;
+  params.harqProcessId = 0;
   
   //TODO FIXME NEW for V2X
   NrV2XTag v2xTag;
@@ -420,6 +430,17 @@ NistLteRlcUm::DoNotifyTxOpportunity (uint32_t bytes, uint8_t layer, uint8_t harq
       m_rbsTimer.Cancel ();
       m_rbsTimer = Simulator::Schedule (MilliSeconds (10), &NistLteRlcUm::ExpireRbsTimer, this);
     }
+
+  NS_LOG_LOGIC ("First SDU size    = " << (*(m_txBuffer.begin()))->GetSize ());
+
+  if ((uint8_t) harqId == 1) 
+  {
+    NS_LOG_LOGIC("Pushing back another packet for blind retransmissions");
+    m_txBuffer.push_back(copyPacket);
+    m_txBufferSize += copyPacket->GetSize ();
+//    std::cin.get();
+  }
+
 }
 
 void
