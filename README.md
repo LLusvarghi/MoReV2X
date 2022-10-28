@@ -22,12 +22,12 @@ and then build ns-3 typing
 
 # About
 List of people who contributed to this project: 
-* Luca Lusvarghi (luca.lusvarghi5@unimore.it), Università degli Studi di Modena e Reggio Emilia (Italy) 
-* Lorenzo Gibellini, Università degli Studi di Modena e Reggio Emilia (Italy)
-* Maria Luisa Merani, Università degli Studi di Modena e Reggio Emilia (Italy)
-* Alejandro Molina-Galan, Universidad Miguel Hernandez de Elche (UMH)
-* Baldomero Coll-Perales, Universidad Miguel Hernandez de Elche (UMH)
-* Javier Gozalvez, Universidad Miguel Hernandez de Elche (UMH)
+* Luca Lusvarghi (luca.lusvarghi5@unimore.it), Università degli Studi di Modena e Reggio Emilia, Italy
+* Lorenzo Gibellini, Università degli Studi di Modena e Reggio Emilia, Italy
+* Maria Luisa Merani, Università degli Studi di Modena e Reggio Emilia, Italy
+* Alejandro Molina-Galan, Universidad Miguel Hernandez de Elche (UMH), Spain
+* Baldomero Coll-Perales, Universidad Miguel Hernandez de Elche (UMH), Spain
+* Javier Gozalvez, Universidad Miguel Hernandez de Elche (UMH), Spain
 
 # License
 The MoReV2X module is licensed under the GNU GPLv2 license.
