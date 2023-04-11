@@ -44,25 +44,33 @@ Ipv4Address groupAddress; //use multicast address as destination --> broadcast
 
 int TrepPrint = 100; // (ms). Set the interval for printing the V-UE stats
 //int PDBaperiodic = 50;
-int Tgen_aperiodic_c, Tgen_periodic;
+int Tgen_aperiodic_c;
 
 std::vector<uint16_t> AperiodicPKTs_Size, PeriodicPKTs_Size;
 uint16_t LargestAperiodicSize, LargestPeriodicSize, LargestCAMSize;
 
 double MeasInterval;
+
 Ptr<ExponentialRandomVariable> RndExp;
+Ptr<ExponentialRandomVariable> RndExp_1;
+int ModuloSplit;
 
 bool ExponentialModel;
 
 std::map< uint32_t, std::vector< std::pair<int,int> > > CAMtraces;
 
 std::vector<double> Periodic_Tgen;
+std::vector<double> Aperiodic_Tgen_c;
+std::vector<double> PDB_Periodic;
+std::vector<double> PDB_Aperiodic;
+
 std::vector<double> PrevX, PrevY, PrevZ, VelX, VelY, VelZ; 
 std::vector<bool> EnableTX;
 std::vector<uint8_t> VehicleTrafficType;
+
 std::vector<uint16_t> Pattern_index;
 
-bool ETSITraffic;
+bool ETSITraffic, avgRRI;
 
 void LoadCAMtraces (NodeContainer VehicleUEs);
 
@@ -74,6 +82,7 @@ bool UrbanScenario;
 
 std::string FilePath;
 
+bool enableUDPfiles;
 
 uint32_t PacketSizeDistribution(void)
 {
@@ -141,11 +150,11 @@ UdpClient::Send (void)
     v2xTag.SetMessageType (0x00); //CAM, @LUCA just want to work with CAMs
     v2xTag.SetTrafficType (VehicleTrafficType[nodeId-1]); // Coexistence of periodic and aperiodic traffic
     v2xTag.SetPPPP (0x00); // PPPP for CAM
-    v2xTag.SetPrsvp ((uint32_t) (1000 * m_interval.GetSeconds ())); // the required PHY reservation interval. For periodic traffic is ok
+    v2xTag.SetPrsvp ((double) (1000 * m_interval.GetSeconds ())); // the required PHY reservation interval. For periodic traffic is ok
     v2xTag.SetNodeId ((uint32_t) nodeId); // Encapsulate the nodeId. It will be used at MAC layer
     v2xTag.SetReselectionCounter((uint16_t)10000); //safe value for standard-compliant Cresel assignment
 
-    if (VehicleTrafficType[nodeId-1] == 0x01)
+    if (VehicleTrafficType[nodeId-1] == 0x01) // Aperiodic traffic
     {
       if (ETSITraffic) 
       {
@@ -155,46 +164,61 @@ UdpClient::Send (void)
         m_size = CAMtraces[nodeId][Pattern_index[nodeId-1]].second;
         ReservationSize = LargestCAMSize;
         NS_LOG_UNCOND("Udp node " << nodeId << ": transmitting packet with size: " << m_size << " and reserving resources using " << ReservationSize);
-        v2xTag.SetPrsvp ((uint32_t)100); // the required PHY reservation interval 
+        v2xTag.SetPrsvp ((double)100); // the required PHY reservation interval 
         v2xTag.SetReservationSize((uint16_t) ReservationSize + 34);
 
       }
       else //Exponential model
       {
-        T_gen = Tgen_aperiodic_c + RndExp->GetValue (); 
+        //if (nodeId % ModuloSplit != 0)
+        if (nodeId % ModuloSplit <= 1)
+        { 
+          T_gen = Aperiodic_Tgen_c[nodeId-1] + RndExp->GetValue (); 
+          NS_LOG_INFO("Aperiodic inter-arrival time constant = " << Aperiodic_Tgen_c[nodeId-1] << ", Exp mean = " << RndExp->GetMean()); 
+        }
+        else
+        {
+          T_gen = Aperiodic_Tgen_c[nodeId-1] + RndExp_1->GetValue (); 
+          NS_LOG_INFO("Aperiodic inter-arrival time constant = " << Aperiodic_Tgen_c[nodeId-1] << ", Exp mean = " << RndExp_1->GetMean());
+        }
+//        v2xTag.SetPdb ((double)Aperiodic_Tgen_c[nodeId-1]); // @LUCA modified later
+        v2xTag.SetPdb ((double)PDB_Aperiodic[nodeId-1]); // @LUCA modified later
 
-        v2xTag.SetPdb ((double)Tgen_aperiodic_c); // @LUCA modified later
         m_size = AperiodicPKTs_Size[packetSize_index->GetInteger(0,AperiodicPKTs_Size.size()-1)];
         //m_size = PacketSizeDistribution();
       //  ReservationSize = LargestAperiodicSize;
         ReservationSize = m_size;
-        NS_LOG_UNCOND("Udp: transmitting packet with size: " << m_size+34 << " and reserving resources using " << ReservationSize+34 << ". Next packet in " << T_gen << " ms");
-        v2xTag.SetPrsvp ((uint32_t) Tgen_aperiodic_c*2); // the required PHY reservation interval 
-        v2xTag.SetReservationSize((uint16_t) ReservationSize + 34);
+
+        if (avgRRI)
+          v2xTag.SetPrsvp ((double) Aperiodic_Tgen_c[nodeId-1]*2); // average RRI 
+        else
+          v2xTag.SetPrsvp ((double) Aperiodic_Tgen_c[nodeId-1]); // minimum RRI
+
+        v2xTag.SetReservationSize((uint16_t) ReservationSize + 35);
+        NS_LOG_UNCOND("Udp: UE " << nodeId << " transmitting packet with size: " << m_size+35 << " B and reserving resources using " << ReservationSize+35 << "B. RRI " << v2xTag.GetPrsvp() << " ms. Next packet in " << T_gen << " ms");
       }
      // std::cin.get();
-      v2xTag.SetPacketSize((uint16_t) m_size + 34);
+      v2xTag.SetPacketSize((uint16_t) m_size + 35);
     }
-    else
+    else  // Periodic traffic
     {
       T_gen = Periodic_Tgen[nodeId-1];
-      v2xTag.SetPrsvp ((uint32_t) Periodic_Tgen[nodeId-1]);
-     // v2xTag.SetPrsvp ((uint32_t) Tgen_periodic);
-      v2xTag.SetPdb ((double) v2xTag.GetPrsvp ()); // @LUCA modified later
+      v2xTag.SetPrsvp ((double) Periodic_Tgen[nodeId-1]);
+//      v2xTag.SetPdb ((double) v2xTag.GetPrsvp ()); // @LUCA modified later
+      v2xTag.SetPdb ((double)PDB_Periodic[nodeId-1]); // @LUCA modified later
       m_size = PeriodicPKTs_Size[Pattern_index[nodeId-1]%5];
+//      m_size = AperiodicPKTs_Size[packetSize_index->GetInteger(0,AperiodicPKTs_Size.size()-1)];
+
    //   ReservationSize = LargestPeriodicSize;
       ReservationSize = m_size;
-      NS_LOG_UNCOND("Udp: transmitting packet with size: " << m_size+34 << " and reserving resources using " << ReservationSize+34 << ". Next packet in " << T_gen << " ms");
-   //   std::cin.get();
-      v2xTag.SetPacketSize((uint16_t) m_size + 34);
-      v2xTag.SetReservationSize((uint16_t) ReservationSize + 34);
+      v2xTag.SetPacketSize((uint16_t) m_size + 35);
+      v2xTag.SetReservationSize((uint16_t) ReservationSize + 35);
+      NS_LOG_UNCOND("Udp: UE " << nodeId << " transmitting packet with size: " << m_size+35 << " B and reserving resources using " << ReservationSize+35 << "B. RRI " << v2xTag.GetPrsvp() << " ms. Next packet in " << T_gen << " ms");
     }
     packetID = packetID + 1; // increment the packet ID number 
     v2xTag.SetIntValue(packetID); 
     v2xTag.SetPacketId(packetID); 
-    Time time = Simulator::Now();
-    double timeSec = time.GetSeconds();
-    v2xTag.SetDoubleValue(timeSec);
+    v2xTag.SetDoubleValue(Simulator::Now().GetSeconds());
     Ptr<MobilityModel> mobility = GetNode()->GetObject<MobilityModel>();
     Vector currentPos = mobility -> GetPosition();
     double xPosition = currentPos.x;
@@ -210,22 +234,22 @@ UdpClient::Send (void)
     p->AddHeader (seqTs);  // Add the header to the packet
 
     p->AddByteTag (v2xTag); // Attach the tag
-    if ((VehicleTrafficType[nodeId-1] == 0x01) && (ETSITraffic)) 
+    if ((VehicleTrafficType[nodeId-1] == 0x01) && (ETSITraffic) && enableUDPfiles) 
     {
       std::ofstream CAMdebug;
       CAMdebug.open(FilePath + "CAMdebugFile.txt", std::ios_base::app);
-      CAMdebug << packetID << "," << timeSec << "," << nodeId << "," <<  Pattern_index[nodeId-1] << "," <<  CAMtraces[nodeId][Pattern_index[nodeId-1]].first << "," <<  CAMtraces[nodeId][Pattern_index[nodeId-1]].second << "\r\n" ;
+      CAMdebug << packetID << "," << Simulator::Now().GetSeconds() << "," << nodeId << "," <<  Pattern_index[nodeId-1] << "," <<  CAMtraces[nodeId][Pattern_index[nodeId-1]].first << "," <<  CAMtraces[nodeId][Pattern_index[nodeId-1]].second << "\r\n" ;
       CAMdebug.close();
     }
     Point point = {(int)xPosition, (int)yPosition}; 
     insideTX = PositionChecker.isInsidePoly("TX", point);
  //   if ((xPosition >= 1500) && (xPosition <= 3500)){
-  /*  if (insideTX){
+    if (insideTX && enableUDPfiles){
     std::ofstream filetest;
     filetest.open(FilePath + "TxFile.txt", std::ios_base::app);
-    filetest << packetID << "," << timeSec << "," << nodeId << "," << xPosition << "," << yPosition << "," << (int)v2xTag.GetMessageType () << "," << (int)v2xTag.GetTrafficType () << "," << m_size+34 << "\r\n" ;
+    filetest << packetID << "," << Simulator::Now().GetSeconds() << "," << nodeId << "," << xPosition << "," << yPosition << "," << (int)v2xTag.GetMessageType () << "," << (int)v2xTag.GetTrafficType () << "," << m_size+34 << "\r\n" ;
     filetest.close();
-    }*/
+    }
     std::stringstream peerAddressStringStream;
     if (Ipv4Address::IsMatchingType (m_peerAddress))
     {
@@ -267,7 +291,7 @@ UdpClient::Send (void)
       NS_LOG_INFO ("Error while sending " << m_size << " bytes to "
                                           << peerAddressStringStream.str ());
     }
-    //std::cin.get();
+//    std::cin.get();
 
     Ptr<UniformRandomVariable> rand = CreateObject<UniformRandomVariable>();
 
@@ -293,7 +317,8 @@ UdpClient::Send (void)
            // std::cin.get();
            m_sendEvent = Simulator::Schedule (MilliSeconds(T_gen), &UdpClient::Send, this); 
          }
-       }  
+       }
+
     }
   } // end if Enable
   else
@@ -311,10 +336,7 @@ void PacketSink::HandleRead (Ptr<Socket> socket)
   Address from,localAddress;
   Ptr<Node> currentNode = GetNode();
   uint32_t nodeId = currentNode -> GetId();
-//  uint32_t TXnodeId;
-  Time time = Simulator::Now();
-//  bool multihop = true;
-  double timeSec = time.GetSeconds();
+
   double tGenSec;
   double genPosX;
   double genPosY;
@@ -372,12 +394,12 @@ void PacketSink::HandleRead (Ptr<Socket> socket)
     currentSequenceNumber+=0;
     Point p = {(int)rxPosX, (int)rxPosY}; 
     insideRX = PositionChecker.isInsidePoly("RX", p);
-   /* if (insideRX)
+    if (insideRX && enableUDPfiles)
     {
       filetest.open(FilePath + "RxFile.txt",std::ios_base::app);
-      filetest << rxPacketID << "," << tGenSec << "," <<  timeSec << "," << timeSec - tGenSec <<"," << nodeId << "," << packet->GetSize () << "," << TxRxDistance << "," << numHops << "," << (int) messageType << "," << (int)rxV2xTag.GetTrafficType () << "," << (int) alreadyReceived << "\r\n" ;
+      filetest << rxPacketID << "," << tGenSec << "," << Simulator::Now().GetSeconds() << "," << Simulator::Now().GetSeconds() - tGenSec <<"," << nodeId << "," << packet->GetSize () << "," << TxRxDistance << "," << numHops << "," << (int) messageType << "," << (int)rxV2xTag.GetTrafficType () << "," << (int) alreadyReceived << "\r\n" ;
       filetest.close();
-    }*/
+    }
   }
 }
 
@@ -424,8 +446,8 @@ void LoadCAMtraces (NodeContainer VehicleUEs)
 void Print (NodeContainer VehicleUEs) {
         uint32_t ID;
         bool inside;
-//        std::ofstream positFile;  
-//        positFile.open(FilePath + "posFile.txt",std::ofstream::app);
+        std::ofstream positFile;  
+        positFile.open(FilePath + "posFile.txt",std::ofstream::app);
         for (NodeContainer::Iterator L = VehicleUEs.Begin(); L != VehicleUEs.End(); ++L)
         {
             Ptr<Node> node = *L;
@@ -451,12 +473,12 @@ void Print (NodeContainer VehicleUEs) {
             Point p = {(int)pos.x, (int)pos.y}; 
             inside = PositionChecker.isInsidePoly("RX", p);
 
-/*            if (inside){
+            if (inside){
               positFile << Simulator::Now().GetSeconds() << "," << ID << "," << pos.x << "," << pos.y << "," << pos.z << "," << VelX[ID-1] << "," << VelY[ID-1] << "," << VelZ[ID-1] << "," << (int)VehicleTrafficType[ID-1] << "," << "1" << "\r\n";
             }
             else
               positFile << Simulator::Now().GetSeconds() << "," << ID << "," << pos.x << "," << pos.y << "," << pos.z << "," << VelX[ID-1] << "," << VelY[ID-1] << "," << VelZ[ID-1] << "," << (int)VehicleTrafficType[ID-1] << "," << "0" << "\r\n";
-*/
+
             EnableTX[ID-1] = true;
             if (!PositionChecker.isEnabled(pos))
               EnableTX[ID-1] = false;
@@ -468,7 +490,7 @@ void Print (NodeContainer VehicleUEs) {
         }         
      //   Simulator::Schedule (MilliSeconds (TrepPrint), &Print);
         Simulator::Schedule (MilliSeconds (TrepPrint), &Print, VehicleUEs);      
-//        positFile.close();
+        positFile.close();
 }
 
 
@@ -482,7 +504,7 @@ main (int argc, char *argv[])
 //  LogComponentEnable("NistLteHelper", LOG_LEVEL_ALL);
 //  LogComponentEnable("NistLteRrcProtocolIdeal", LOG_LEVEL_ALL);
 //  LogComponentEnable("BuildingsPropagationLossModel", LOG_LEVEL_ALL);
-//  LogComponentEnable("NrV2XPhyErrorModel", LOG_LEVEL_ALL);
+//  LogComponentEnable("NrV2XPhyErrorModel", LOG_LEVEL_ALL)
 //  LogComponentEnable("NrV2XUeMac", LOG_LEVEL_ALL);
 //  LogComponentEnable("NrV2XUePhy", LOG_LEVEL_ALL);
 //  LogComponentEnable("NrV2XSpectrumPhy", LOG_LEVEL_ALL);
@@ -490,8 +512,9 @@ main (int argc, char *argv[])
 //  LogComponentEnable("NrV2XAmc", LOG_LEVEL_ALL);
 //  LogComponentEnable("NistLteRlcUm", LOG_LEVEL_ALL);
 //  LogComponentEnable("NistLteUeRrc", LOG_LEVEL_ALL);
- // LogComponentEnable("NrV2XSpectrumValueHelper", LOG_LEVEL_ALL); //TODO
+//  LogComponentEnable("NrV2XSpectrumValueHelper", LOG_LEVEL_ALL); //TODO
 //  LogComponentEnable("NistLteSlInterference", LOG_LEVEL_ALL); 
+//  LogComponentEnable("MultiModelSpectrumChannel", LOG_LEVEL_ALL); 
   //LogComponentEnable ("UdpClient", LOG_LEVEL_INFO);
 //--------------------------------------------------------------------------------------------
   
@@ -506,22 +529,37 @@ main (int argc, char *argv[])
   double ueTxPower = 23.0; // [dBm]
   uint32_t ueCount = 4; // Number of V-UEs 
   bool verbose = true;
-
+  enableUDPfiles = false;
   //Default configuration
   uint16_t OFDM_numerology = 0; //Default value is 0 = 15 KHz SCS
   uint16_t channelBW = 10; //In MHz, default
   uint16_t channelBW_RBs;
   uint32_t subchannelSize = 10; //Default
+  uint32_t highwayLength = 5000;
 
-  bool IBE = false;
- 
+  bool IBE = true;
+
   std::string outputPath;
+
+  bool DynamicSchedulingMode2 = false;
+  bool AdaptiveSchedulingMode2 = false;
+  
+  bool FrequencyReuse = false;
+  uint32_t ReuseDistance = 0;
+  double GeoCellSize;
+
+  bool ReTranmissions = false;
 
   bool ReEvaluation = false; //Default
   bool AllSlots_ReEvaluation = false; //Default
+  bool UMH_ReEvaluation = false; //Default
 
-  double RefSensitivity;
+  bool VariablePacketSize = false;
 
+  int inputPDB = 0;
+
+  double RefSensitivity, CBR_RSSIthreshold;
+  double MAC_RSRPthreshold = -128.0;
 //  AperiodicPKTs_Size = packetSize;  // Can be set with a different dimension too.
 
   bool PeriodicTraffic = false;
@@ -530,6 +568,8 @@ main (int argc, char *argv[])
   int PeriodicPercentage = 0;
 
   ETSITraffic = false;
+
+  avgRRI = false;
 
   bool CtrlErrorModelEnabled = true; // Enable error model in the PSCCH
 
@@ -554,12 +594,6 @@ main (int argc, char *argv[])
   Point polygonTX[] = {{975, 1870}, {1540, 1626}, {1965, 2121}, {2556, 3253}, {1798,3597}, {966,2492}}; 
   Point polygonRX[] = {{962, 1861}, {1541, 1614}, {1975, 2114}, {2572, 3258}, {1793,3609}, {953,2491}}; 
 
-  //global variables ruling the aperiodic traffic behaviour down at MAC level
-  // if both are false then submissive strategy is applied
-  bool Aggressive = false;  
-  bool OneShot = false; 
-  bool Submissive = false;
-
   CommandLine cmd;
   cmd.AddValue ("Vehicles", "Number of vehicles", ueCount);
   cmd.AddValue ("period", "Sidelink period", period);
@@ -575,13 +609,20 @@ main (int argc, char *argv[])
   cmd.AddValue ("randomV2VSelection", "Whether V2V resources are randomly selected in autonomous scheduling mode", randomV2VSelection);
   cmd.AddValue ("useRxCresel", "Mode 2: use the receiver SCI reselection counter", RxCresel); 
 
-  cmd.AddValue ("OneShot", "Serve latency and size reselections with one-shot transmissions", OneShot); 
-  cmd.AddValue ("IBE", "Enable In-Band Emissions (IBE)", IBE); 
+  cmd.AddValue ("noIBE", "Disable In-Band Emissions (IBE)", IBE); 
   cmd.AddValue ("SubChannel", "Subchannel Size in RBs", subchannelSize); 
   cmd.AddValue ("ChannelBW", "Channel bandwidth in MHz", channelBW); 
-  
+
+  cmd.AddValue ("VariableSize", "Generate variable size packets", VariablePacketSize); 
+
+  cmd.AddValue ("Dynamic", "Enable Mode 2 Dynamic Scheduling", DynamicSchedulingMode2); 
+  cmd.AddValue ("Adaptive", "Enable Mode 2 Adaptive Scheduling (mixed traffic only)", AdaptiveSchedulingMode2); 
+  cmd.AddValue ("ReTx", "Allow re-transmissions (blind)", ReTranmissions); 
   cmd.AddValue ("ReEvaluation", "Allow re-evaluation of selected resources", ReEvaluation); 
   cmd.AddValue ("AllSlots", "Perform re-evaluation in all-slots", AllSlots_ReEvaluation); 
+  cmd.AddValue ("UMH", "Perform re-evaluation only on re-transmissions", UMH_ReEvaluation); 
+  cmd.AddValue ("RSRP", "MAC layer RSRP threshold", MAC_RSRPthreshold); 
+  cmd.AddValue ("PDB", "Packet Delay Budget (PDB)", inputPDB); 
 
   cmd.AddValue ("Numerology", "Configure the OFDM numerology", OFDM_numerology);
   cmd.AddValue ("Periodic", "Enable periodic traffic generation", PeriodicTraffic);
@@ -590,6 +631,14 @@ main (int argc, char *argv[])
   cmd.AddValue ("Percentage", "In mixed mode, the percentage of periodic UEs", PeriodicPercentage);
 
   cmd.AddValue ("ETSI", "Enable the ETSI-Algorithm for the CAMs generation", ETSITraffic);
+
+  cmd.AddValue ("AvgRRI", "Reserve resources with average RRI in case of aperiodic traffic", avgRRI);
+
+  cmd.AddValue ("FreqReuse", "Enable the frequency-reuse strategy", FrequencyReuse); 
+  cmd.AddValue ("ReuseDist", "Set the reuse distance", ReuseDistance); 
+
+
+ // cmd.AddValue ("Sens", "The reference sensitivity", RefSensitivity); 
 
   cmd.Parse(argc, argv);
 
@@ -605,20 +654,56 @@ main (int argc, char *argv[])
   NS_ASSERT_MSG(subchannelSize > 0, "Subchannel size must be larger than zero");
   NS_ASSERT_MSG(channelBW_RBs >= subchannelSize, "Channel bandwidth must be larger than the subchannel size");
 
-  NS_LOG_UNCOND("Channel BW = " << channelBW << " MHz. Channel BW = " <<channelBW_RBs << " RBs. Subchannel size = " << subchannelSize << " RBs");
+  NS_LOG_UNCOND("Channel BW = " << channelBW << " MHz. Channel BW = " << channelBW_RBs << " RBs. Subchannel size = " << subchannelSize << " RBs");
 
-  RefSensitivity = GetRefSensitivity(15*SCS_factor[OFDM_numerology], channelBW);
+  //RefSensitivity = GetRefSensitivity(15*SCS_factor[OFDM_numerology], channelBW);
+  RefSensitivity = -103.5;
+  
+//  CBR_RSSIthreshold = GetRSSIthreshold(RefSensitivity);
+  CBR_RSSIthreshold = -88.0;
 
-  NS_LOG_UNCOND("UE reference sensitivity = " << RefSensitivity);
+  NS_LOG_UNCOND("UE reference sensitivity = " << RefSensitivity << " dBm, RSSI threshold = " << CBR_RSSIthreshold << " dBm");
 
- /* Ptr<NrV2XAmc> NRamc = CreateObject <NrV2XAmc> ();
+  std::map < uint16_t, std::vector < std::pair <double, double>>>  SubchannelIndexMap;
+  uint32_t NumGeoCells; 
+
+  if (FrequencyReuse)
+  {
+    NS_ASSERT_MSG(ReuseDistance != 0, "Reuse distance must be larger than zero. Set it using --ReuseDist option");
+    GeoCellSize = GetGeoCellSize(subchannelSize,channelBW_RBs,ReuseDistance,&NumGeoCells);
+    NS_LOG_UNCOND("Reuse distance " << ReuseDistance << " meters. Geo-cell size " << GeoCellSize << " meters, number of geo-cells: " << NumGeoCells);
+    // Number of geo-cells coincides with the number of subchannels
+    double X_coord = 0.0;
+    uint32_t subchannel_index = 0;
+    while (X_coord <= highwayLength)
+    {
+      NS_LOG_DEBUG("Assigning subchannel index " << subchannel_index % NumGeoCells << " to geo-cell [" << X_coord << "," << X_coord + GeoCellSize << ")");
+      std::map < uint16_t, std::vector < std::pair <double, double>>>::iterator geoIT = SubchannelIndexMap.find(subchannel_index % NumGeoCells);
+      if (geoIT != SubchannelIndexMap.end()) 
+      {
+        SubchannelIndexMap[subchannel_index % NumGeoCells].push_back(std::pair<double, double> (X_coord, X_coord + GeoCellSize));
+      }
+      else
+      {
+        std::pair <double, double> tmpPair(X_coord, X_coord + GeoCellSize);
+        std::vector < std::pair <double, double>> tmpVector = {tmpPair};
+        SubchannelIndexMap.insert(std::pair < uint16_t, std::vector < std::pair <double, double>>> (subchannel_index % NumGeoCells, tmpVector));
+      }
+      X_coord += GeoCellSize;
+      subchannel_index++;
+    }   
+  }
+
+  /*Ptr<NrV2XAmc> NRamc = CreateObject <NrV2XAmc> ();
   for (uint16_t i=1; i< 20; i++)
   {
     uint16_t TBlen_subCH, TBlen_RBs;
-    NRamc->GetSlSubchAndTbSizeFromMcs(i*100+32, mcs, subchannelSize, channelBW_RBs, &TBlen_subCH, &TBlen_RBs);
-    NS_LOG_UNCOND("Pkt size = " << i*100 << ", RBs " << TBlen_RBs << " Subchannels = " << TBlen_subCH);
-  }*/
-  /*for (uint16_t i=0; i< 6; i++)
+    NRamc->GetSlSubchAndTbSizeFromMcs(i*100-3, mcs, subchannelSize, channelBW_RBs, &TBlen_subCH, &TBlen_RBs);
+    NS_LOG_UNCOND("Pkt size = " << i*100 << " B requires " << TBlen_RBs << " RBs. Subchannel length = " << TBlen_subCH << " RBs");
+  }
+  std::cin.get(); 
+
+  for (uint16_t i=0; i< 6; i++)
   {
     uint16_t TBlen_subCH, TBlen_RBs;
     NRamc->GetSlSubchAndTbSizeFromMcs(200+i*200, mcs, subchannelSize, channelBW_RBs, &TBlen_subCH, &TBlen_RBs);
@@ -632,7 +717,6 @@ main (int argc, char *argv[])
   NS_LOG_UNCOND("Pkt size = " << 300 << ", RBs " << TBlen_RBs << " Subchannels = " << TBlen_subCH);
   std::cin.get();*/
 
- // std::cin.get();
   //Check the traffic configuration
   if (ETSITraffic)
   {
@@ -641,12 +725,8 @@ main (int argc, char *argv[])
   }
   else if (MixedTraffic)
   {
-    if ((ETSITraffic) || (AperiodicTraffic) || (PeriodicTraffic))
-      NS_ASSERT_MSG (false, "Enable only one traffic model");      
-    if (PeriodicPercentage == 0)
-      NS_ASSERT_MSG (false, "Set a valid periodic traffic percentage. Allowed values: 10, 50 and 90 %");
-    if ((PeriodicPercentage != 10) and (PeriodicPercentage != 50) and (PeriodicPercentage != 90))
-      NS_ASSERT_MSG (false, "Set a valid periodic traffic percentage. Allowed values: 10, 50 and 90 %");
+    NS_ASSERT_MSG((PeriodicPercentage == 10) || (PeriodicPercentage == 25) || (PeriodicPercentage == 50) || 
+(PeriodicPercentage == 75) || (PeriodicPercentage == 90), "Non-valid periodic traffic percentage. Allowed values are 25, 50 and 75%");
   }
   else if (AperiodicTraffic)
   {
@@ -661,30 +741,42 @@ main (int argc, char *argv[])
   else     
     NS_ASSERT_MSG (false, "Enable at least one traffic model"); 
 
-  //Roba da togliere per WNS3--------------------------------------
-  NS_ASSERT_MSG (!(Aggressive and OneShot), "Choose only one strategy for serving aperiodic traffic");
-  NS_ASSERT_MSG (!(Aggressive and Submissive), "Choose only one strategy for serving aperiodic traffic");
-  NS_ASSERT_MSG (!(OneShot and Submissive), "Choose only one strategy for serving aperiodic traffic");
+
+  if (AdaptiveSchedulingMode2)
+  {
+    NS_ASSERT_MSG(MixedTraffic, "Adaptive scheduling is allowed only in mixed traffic scenarios");
+    NS_ASSERT_MSG(!DynamicSchedulingMode2, "With mixed traffic only dynamic or adaptive scheduling is allowed, not both");
+  }
 
  // NS_ASSERT_MSG (!(ExponentialModel and CAMtraceModel), "Choose only one aperiodic traffic model");
 //  NS_ASSERT_MSG (!(ML_CAMtrace and GT_CAMtrace), "Choose the Machine Learning algorithm OR the Ground-Truth predictions"); // Da rimuovere per WNS3??
 
   if (RxCresel)
     NS_ASSERT_MSG(false, "Rx Cresel is not available");
-  //----------------------------------------------------------------------------
+
+
+  //------------------- Configure the output path ---------------------------------------------------------
   
   if (PeriodicTraffic)
-    if (AllSlots_ReEvaluation)
-      outputPath = "results/Periodic_AllSlots_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
-    else
-      outputPath = "results/Periodic_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+    outputPath = "results/Periodic_Dynamic" + std::to_string(DynamicSchedulingMode2) + "_avgRRI" + std::to_string(avgRRI) + "_VariableSize" + std::to_string(VariablePacketSize) + "_ReEval" + std::to_string(ReEvaluation) + "_" + std::to_string(ueCount) + "_PDB" + std::to_string(inputPDB) +  "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
   else if (AperiodicTraffic)
-    if (AllSlots_ReEvaluation)
-      outputPath = "results/Aperiodic_AllSlots_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
-    else
-      outputPath = "results/Aperiodic_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+    outputPath = "results/Aperiodic_Dynamic" + std::to_string(DynamicSchedulingMode2) + "_avgRRI" + std::to_string(avgRRI) + "_VariableSize" + std::to_string(VariablePacketSize) + "_ReEval" + std::to_string(ReEvaluation) + "_" + std::to_string(ueCount) + "_PDB" + std::to_string(inputPDB) + "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
   else
-    outputPath = "results/sidelink_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+    if (AdaptiveSchedulingMode2)
+      outputPath = "results/MixedAdaptive_Dynamic" + std::to_string(DynamicSchedulingMode2) + "_avgRRI" + std::to_string(avgRRI) + "_VariableSize" + std::to_string(VariablePacketSize) + "_ReEval" + std::to_string(ReEvaluation) + "_" + std::to_string(ueCount) + "_PDB" + std::to_string(inputPDB) + "_Perc" + std::to_string(PeriodicPercentage) + "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+    else
+      outputPath = "results/Mixed_Dynamic" + std::to_string(DynamicSchedulingMode2) + "_avgRRI" + std::to_string(avgRRI) + "_VariableSize" + std::to_string(VariablePacketSize) + "_ReEval" + std::to_string(ReEvaluation) + "_" + std::to_string(ueCount) + "_PDB" + std::to_string(inputPDB) + "_Perc" + std::to_string(PeriodicPercentage) + "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+
+  //--------------------------------------------------------------------------------------------------------
+
+/*
+  if (PeriodicTraffic)
+    outputPath = "results/Periodic_Dynamic" + std::to_string(DynamicSchedulingMode2) + "_FreqReuse" + std::to_string(FrequencyReuse) + "_" + std::to_string(channelBW) + "_" + std::to_string(ReuseDistance) + "_" + std::to_string(ueCount) + "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+  else if (AperiodicTraffic)
+    outputPath = "results/Aperiodic_Dynamic" + std::to_string(DynamicSchedulingMode2) + "_FreqReuse" + std::to_string(FrequencyReuse) + "_" + std::to_string(channelBW) + "_" + std::to_string(ReuseDistance) + "_" + std::to_string(ueCount) + "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+  else
+    outputPath = "results/sidelink_" + std::to_string(ueCount) + "_" + std::to_string(seed) + "_" + std::to_string(runNumber) + "/"; 
+*/
 
   FilePath = outputPath;
   //Clear the results folder 
@@ -696,6 +788,7 @@ main (int argc, char *argv[])
   readme.open (outputPath + "simREADME.txt");
   readme << "----------------------" << std::endl;
   readme << "Simulation:" << std::endl;
+  readme << " - simulation time = " << simTime << " s " << std::endl;
   readme << " - seed = " << seed << std::endl; 
   readme << " - run = " << runNumber << std::endl;
   readme << " - UE count = " << ueCount << std::endl;
@@ -705,15 +798,70 @@ main (int argc, char *argv[])
   readme << " - SubChannel size = " << subchannelSize << " RBs" << std::endl;
   readme << " - Channel BW = " << channelBW << " MHz. Channel BW = " << channelBW_RBs << " RBs" << std::endl;
   readme << " - Re-evaluation = " << ReEvaluation << std::endl;
-  readme << " --- All slots solution = " << AllSlots_ReEvaluation << std::endl;
-  readme << " - Aperiodic traffic = " << AperiodicTraffic << std::endl;
-//  readme << " --- Aggressive strategy: " << Aggressive << std::endl;
-  readme << " --- One-shot strategy = " << OneShot << std::endl;
-//  readme << " --- Submissive strategy: " << Submissive << std::endl;
-//  readme << " --- Exponential Model: " << ExponentialModel << std::endl;
-//  readme << " --- CAM trace Model: " << CAMtraceModel << ", Ground truth? " << GT_CAMtrace << ", Machine Learning? " << ML_CAMtrace << std::endl;
+  readme << " --- UMH variant = " << UMH_ReEvaluation << std::endl;
+  readme << " --- All slots variant = " << AllSlots_ReEvaluation << std::endl;
+  readme << " - Re-tranmissions = " << ReTranmissions << std::endl;
   readme << " - Periodic traffic = " << PeriodicTraffic << std::endl;
+  readme << " - Aperiodic traffic = " << AperiodicTraffic << std::endl;
+  readme << " - Mixed traffic = " << MixedTraffic << std::endl;
+  if (MixedTraffic)
+  {
+    readme << " --- Periodic users = " << PeriodicPercentage << "%" << std::endl;
+    readme << " --- Adaptive scheduling " << AdaptiveSchedulingMode2 << std::endl;
+  }
+  if (VariablePacketSize)
+    readme << " - Variable packet size " << std::endl;
+  else
+    readme << " - Fixed packet size " << std::endl;
+
+  if (inputPDB != 0)
+    readme << " --- Custom PDB set to " << inputPDB << " ms" << std::endl;
+  
+  readme << " - MAC layer:" << std::endl;
+  readme << " --- Dynamic scheduling " << DynamicSchedulingMode2 << std::endl;
+
+  if (avgRRI)
+    readme << " --- Average RRI " << std::endl;
+  else 
+    readme << " --- Minimum RRI " << std::endl;   
+
+
+  readme << " - RSRP threshold = " << MAC_RSRPthreshold << " dBm" << std::endl;
+  readme << " - RSSI threshold = " << CBR_RSSIthreshold << " dBm" << std::endl;
+  readme << " - PHY sensitivity = " << RefSensitivity << " dBm" << std::endl;
+
+  if (FrequencyReuse)
+  {
+    readme << " --- Frequency-reuse enabled " << std::endl;
+    readme << " ----- Reuse distance = " << ReuseDistance << " meters" << std::endl;
+    readme << " ----- Geo-cell size = " << GeoCellSize << " meters" << std::endl;
+    readme << " ----- Geo-cells number = " << NumGeoCells << std::endl;
+  }
+  else
+    readme << " --- Frequency-reuse disabled " << std::endl;
+
   readme.close ();
+
+
+  // ---------------------- Output the frequency reuse map ----------------------
+  if (FrequencyReuse)
+  {
+    std::ofstream FreqReuseMap;
+    FreqReuseMap.open (outputPath + "FreqReuseMap.txt");
+    for (std::map < uint16_t, std::vector < std::pair <double, double>>>::iterator mapIT = SubchannelIndexMap.begin(); mapIT != SubchannelIndexMap.end(); mapIT++)
+    {
+  //    NS_LOG_UNCOND("Subchannel index " << mapIT->first << " includes the following geo-cells:");
+      std::vector < std::pair <double, double>> GeoCellsVector = mapIT->second;
+      for(std::vector < std::pair <double, double>>::iterator GeoCellsIT = GeoCellsVector.begin(); GeoCellsIT != GeoCellsVector.end(); GeoCellsIT++)
+      {
+//        NS_LOG_UNCOND("--- [" << GeoCellsIT->first << "," << GeoCellsIT->second << ")");
+        FreqReuseMap << GeoCellsIT->first << "," << GeoCellsIT->second << "," << mapIT->first << std::endl;
+      }
+    }
+    FreqReuseMap.close();
+  //  std::cin.get();  
+  }
+
 
 // Set the random seed and run
   RngSeedManager::SetSeed (seed);
@@ -722,7 +870,7 @@ main (int argc, char *argv[])
 
   //Initialize the position checker
   PositionChecker.initPolygon(polygonTX, (int)sizeof(polygonTX)/sizeof(polygonTX[0]), "TX"); //Filter TX users
-  PositionChecker.initPolygon(polygonRX, (int)sizeof(polygonRX)/sizeof(polygonRX[0]), "RX"); //Filter TX users
+  PositionChecker.initPolygon(polygonRX, (int)sizeof(polygonRX)/sizeof(polygonRX[0]), "RX"); //Filter RX users
   PositionChecker.initBBs(BBs); 
   PositionChecker.DisableChecker(); // Disable the UEs position checker
 
@@ -734,11 +882,16 @@ main (int argc, char *argv[])
   Config::SetDefault ("ns3::NrV2XUeMac::SlGrantMcs", UintegerValue (mcs)); //The MCS of the SL grant, must be [0..15] (default 0)
   Config::SetDefault ("ns3::NrV2XUeMac::ListL2Enabled", BooleanValue (false)); 
 
-  Config::SetDefault ("ns3::NrV2XUeMac::AggressiveMode4", BooleanValue (Aggressive)); 
-  Config::SetDefault ("ns3::NrV2XUeMac::OneShot", BooleanValue (OneShot)); 
-  Config::SetDefault ("ns3::NrV2XUeMac::SubmissiveMode4", BooleanValue (Submissive)); 
+  Config::SetDefault ("ns3::NrV2XUeMac::MixedTraffic", BooleanValue (MixedTraffic)); 
   Config::SetDefault ("ns3::NrV2XUeMac::AllowReEvaluation", BooleanValue (ReEvaluation)); 
-  Config::SetDefault ("ns3::NrV2XUeMac::AllSlotsReEvaluation", BooleanValue (AllSlots_ReEvaluation)); 
+  Config::SetDefault ("ns3::NrV2XUeMac::AllSlotsReEvaluation", BooleanValue (AllSlots_ReEvaluation));
+  Config::SetDefault ("ns3::NrV2XUeMac::RSRPthreshold", DoubleValue (MAC_RSRPthreshold));
+  Config::SetDefault ("ns3::NrV2XUeMac::EnableReTx", BooleanValue (ReTranmissions));
+  Config::SetDefault ("ns3::NrV2XUeMac::DynamicScheduling", BooleanValue (DynamicSchedulingMode2));
+  Config::SetDefault ("ns3::NrV2XUeMac::AdaptiveScheduling", BooleanValue (AdaptiveSchedulingMode2));
+  Config::SetDefault ("ns3::NrV2XUeMac::UMHReEvaluation", BooleanValue (UMH_ReEvaluation));
+  Config::SetDefault ("ns3::NrV2XUeMac::FrequencyReuse", BooleanValue (FrequencyReuse));
+
 
   // Configure Power Control and Phy layer
   Config::SetDefault ("ns3::NrV2XUePhy::TxPower", DoubleValue (ueTxPower));
@@ -747,6 +900,8 @@ main (int argc, char *argv[])
   Config::SetDefault ("ns3::NistLteUePowerControl::PscchTxPower", DoubleValue (ueTxPower));  // Setting the Transmission Power for the control channel
   Config::SetDefault ("ns3::NistLteUePowerControl::PsschTxPower", DoubleValue (ueTxPower));  // Setting the Transmission Power for the sidelink channel
   Config::SetDefault ("ns3::NrV2XUePhy::RsrpUeMeasThreshold", DoubleValue (-10.0));        // Setting the RSRP threshold
+  Config::SetDefault ("ns3::NrV2XUePhy::ReferenceSensitivity", DoubleValue (RefSensitivity));  
+  Config::SetDefault ("ns3::NrV2XUePhy::RSSIthreshold", DoubleValue (CBR_RSSIthreshold));  
 
   // Configure spectrum layer
   Config::SetDefault ("ns3::NrV2XSpectrumPhy::ReferenceSensitivity", DoubleValue (RefSensitivity));  
@@ -769,9 +924,11 @@ main (int argc, char *argv[])
   Config::SetDefault ("ns3::NrV2XUePhy::OutputPath", StringValue (outputPath)); 
   Config::SetDefault ("ns3::NrV2XSpectrumPhy::OutputPath", StringValue (outputPath)); 
   // Configure the saving period------------------------------------------------------------------------------------
-  Config::SetDefault ("ns3::NrV2XUeMac::SavingPeriod", DoubleValue (2.0)); 
-  Config::SetDefault ("ns3::NrV2XUePhy::SavingPeriod", DoubleValue (2.0)); 
-  Config::SetDefault ("ns3::NrV2XSpectrumPhy::SavingPeriod", DoubleValue (2.0)); 
+  // Tradeoff between speed of the simulation and memory requirements
+  double SavingPeriod = 2.0;
+  Config::SetDefault ("ns3::NrV2XUeMac::SavingPeriod", DoubleValue (SavingPeriod)); 
+  Config::SetDefault ("ns3::NrV2XUePhy::SavingPeriod", DoubleValue (SavingPeriod)); 
+  Config::SetDefault ("ns3::NrV2XSpectrumPhy::SavingPeriod", DoubleValue (SavingPeriod)); 
   //-------------------------------------------------------------------------------------------------------
 
 
@@ -885,10 +1042,17 @@ main (int argc, char *argv[])
 
   Ptr<ListPositionAllocator> positionAlloc = CreateObject <ListPositionAllocator>();
 
+  //int pospos = 1;
+  //GeoCellSize = 8;
   for (NodeContainer::Iterator L = ueResponders.Begin(); L != ueResponders.End(); ++L)
   {  
     double yPos = laneNumber->GetInteger(1,6)*laneWidth;
-    double xPos = Xposition->GetValue(0,5000);
+//    double yPos = laneNumber->GetInteger(1,1)*laneWidth; // 1 lane simulation
+    double xPos = Xposition->GetValue(0,highwayLength);
+//    double xPos = Xposition->GetValue(0,ReuseDistance);
+//    double xPos = pospos;
+//    pospos += GeoCellSize;
+//    xPos += 2000;
     positionAlloc ->Add(Vector(xPos, yPos, 0)); 
   }
   mobilityUE.SetPositionAllocator(positionAlloc);
@@ -903,9 +1067,23 @@ main (int argc, char *argv[])
     Ptr<ConstantVelocityMobilityModel> VelMob = node->GetObject<ConstantVelocityMobilityModel>();
     if (mob->GetPosition().y > 13)
       VelMob->SetVelocity(Vector(19.44, 0, 0));     
+//      VelMob->SetVelocity(Vector(0, 0, 0));     
     else
-      VelMob->SetVelocity(Vector(-19.44, 0, 0));     
+      VelMob->SetVelocity(Vector(-19.44, 0, 0));
+//      VelMob->SetVelocity(Vector(0, 0, 0));          
   }
+  
+/*  MobilityHelper mobilityUE;
+  Ptr<ListPositionAllocator> positionAlloc = CreateObject <ListPositionAllocator>();
+  positionAlloc ->Add(Vector(0, 0, 0)); 
+  positionAlloc ->Add(Vector(10, 0, 0)); 
+  positionAlloc ->Add(Vector(20, 0, 0)); 
+  positionAlloc ->Add(Vector(30, 0, 0)); 
+
+  mobilityUE.SetPositionAllocator(positionAlloc);
+  mobilityUE.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+  mobilityUE.Install (ueResponders); */
+
 
   for (NodeContainer::Iterator L = ueResponders.Begin(); L != ueResponders.End(); ++L)
   {  
@@ -928,6 +1106,7 @@ main (int argc, char *argv[])
 //     PrevY[ID-1] = pos.y;
 //     PrevZ[ID-1] = pos.z;
 
+
     if ((AperiodicTraffic) || (ETSITraffic))
 //      VehicleTrafficType[ID-1] = 0x01;  // 0x00 for periodic traffic. 0x01 for aperiodic traffic
       VehicleTrafficType.push_back(0x01);
@@ -936,27 +1115,39 @@ main (int argc, char *argv[])
       VehicleTrafficType.push_back(0x00);
     else if (PeriodicPercentage == 10)
     {
-//      VehicleTrafficType[ID-1] = 0x01;
-      VehicleTrafficType.push_back(0x01);
-      if (ID % 10 == 0) 
-//          VehicleTrafficType[ID-1] = 0x00;
-          VehicleTrafficType.push_back(0x00);
+      if (ID % 10 == 0)       
+      	VehicleTrafficType.push_back(0x00);
+      else
+      	VehicleTrafficType.push_back(0x01);
+    }
+    else if (PeriodicPercentage == 25)
+    {
+      if (ID % 4 == 0)       
+      	VehicleTrafficType.push_back(0x00);
+      else
+      	VehicleTrafficType.push_back(0x01);
     }
     else if (PeriodicPercentage == 50)
     {
 //      VehicleTrafficType[ID-1] = 0x01;
-      VehicleTrafficType.push_back(0x01);
-      if (ID % 2 == 0) 
-//          VehicleTrafficType[ID-1] = 0x00;
-          VehicleTrafficType.push_back(0x00);
+      if (ID % 2 == 0)       
+         VehicleTrafficType.push_back(0x00);
+      else
+         VehicleTrafficType.push_back(0x01);
+    }
+    else if (PeriodicPercentage == 75)
+    {
+      if (ID % 4 == 0)       
+      	VehicleTrafficType.push_back(0x01);
+      else
+      	VehicleTrafficType.push_back(0x00);
     }
     else if (PeriodicPercentage == 90)
     {
-//      VehicleTrafficType[ID-1] = 0x00;
-      VehicleTrafficType.push_back(0x00);
-      if (ID % 10 == 0) 
-//          VehicleTrafficType[ID-1] = 0x01;
-          VehicleTrafficType.push_back(0x01);
+      if (ID % 10 == 0)       
+      	VehicleTrafficType.push_back(0x01);
+      else
+      	VehicleTrafficType.push_back(0x00);
     }
 
 //    EnableTX[ID-1] = true; //Enable a UE to transmit
@@ -964,52 +1155,110 @@ main (int argc, char *argv[])
     
   }
 
-  Print(ueResponders);  // Print the initial position of the nodes in the output file
+//  Print(ueResponders);  // Print the initial position of the nodes in the output file
    
 
   Sl3GPPChannelMatrix->InitChannelMatrix(ueResponders);
 
- // UpdateChannels(ueResponders,true);
+  ModuloSplit = 10;
 
-
-//LargestAperiodicSize, LargestPeriodicSize;
+  //LargestAperiodicSize, LargestPeriodicSize;
    // Define the packets inter-arrival time and size
    if ((MixedTraffic) || (AperiodicTraffic) || (PeriodicTraffic))
    {
      //@LUCA setting the random variable generator for working with aperiodic traffic
-     Tgen_aperiodic_c = 50;
+     //Tgen_aperiodic_c = 50;
      RndExp = CreateObject<ExponentialRandomVariable> ();
-     RndExp->SetAttribute ("Mean", DoubleValue(Tgen_aperiodic_c));
+     RndExp_1 = CreateObject<ExponentialRandomVariable> ();
 
+
+//     uint16_t quantizationStep = 100;
      uint16_t quantizationStep = 200;
      LargestAperiodicSize = 1200; // Largest packet size for aperiodic traffic
+//     LargestAperiodicSize = 100; // Largest packet size for aperiodic traffic
      for(uint16_t k = 1; k <= LargestAperiodicSize/quantizationStep; k++)
      {
-        AperiodicPKTs_Size.push_back(k*quantizationStep-34);  // Valid packet sizes from 100 to 1000 bytes with 100 bytes quantization step
+       if (VariablePacketSize)
+         AperiodicPKTs_Size.push_back(k*quantizationStep-35); 
+       else
+         AperiodicPKTs_Size.push_back(200-35);  // Valid packet sizes from 100 to 1000 bytes with 100 bytes quantization step
      }
 
-     Tgen_periodic = 100;
      for (NodeContainer::Iterator L = ueResponders.Begin(); L != ueResponders.End(); ++L)
      {
        int ID;
        Ptr<Node> node = *L;
        ID = node->GetId ();
-       if (ID % 2 == 0)   
-         Periodic_Tgen.push_back(100);
+//       if (ID % ModuloSplit != 0)   
+       if (ID % ModuloSplit <= 1)   
+       {
+         if (inputPDB != 0)
+           PDB_Aperiodic.push_back(inputPDB);
+         else
+           PDB_Aperiodic.push_back(10);
+//           PDB_Aperiodic.push_back(10);
+         Aperiodic_Tgen_c.push_back(10);
+//         Aperiodic_Tgen_c.push_back(10);
+         RndExp->SetAttribute ("Mean", DoubleValue(10));
+//         RndExp->SetAttribute ("Mean", DoubleValue(10));
+//         Aperiodic_Tgen_c.push_back(5);
+//         RndExp->SetAttribute ("Mean", DoubleValue(5));
+       }
        else
-         Periodic_Tgen.push_back(100);
+       {
+         if (inputPDB != 0)
+           PDB_Aperiodic.push_back(inputPDB);
+         else
+           PDB_Aperiodic.push_back(50);
+//           PDB_Aperiodic.push_back(10);
+         Aperiodic_Tgen_c.push_back(50);
+//         Aperiodic_Tgen_c.push_back(10);
+         RndExp_1->SetAttribute ("Mean", DoubleValue(50));
+//         RndExp_1->SetAttribute ("Mean", DoubleValue(10));
+
+//         Aperiodic_Tgen_c.push_back(10);
+//         RndExp_1->SetAttribute ("Mean", DoubleValue(10));
+
+//         Aperiodic_Tgen_c.push_back(5);
+//         RndExp_1->SetAttribute ("Mean", DoubleValue(5));
+
+//         Aperiodic_Tgen_c.push_back(25);
+//         RndExp_1->SetAttribute ("Mean", DoubleValue(25));
+       }
      } 
-   //  PeriodicPKTs_Size = {190-34, 190-34, 190-34, 190-34 ,190-34}; //Account for the overhead
-     PeriodicPKTs_Size = {300-34, 300-34, 300-34, 300-34 ,300-34}; //Account for the overhead
-   //  PeriodicPKTs_Size = {600-34, 600-34, 600-34, 600-34 ,600-34}; //Account for the overhead
-//     PeriodicPKTs_Size = {700, 135, 135, 135, 135};
-//     PeriodicPKTs_Size = {50, 50, 50, 50, 50}; 
-//     PeriodicPKTs_Size = {135, 135, 135, 135, 135}; 
-//     PeriodicPKTs_Size = {200, 200, 200, 200, 200}; 
-//     PeriodicPKTs_Size = {300, 300, 300, 300, 300}; 
-//     PeriodicPKTs_Size = {500, 500, 500, 500, 500}; 
-//     PeriodicPKTs_Size = {700, 700, 700, 700, 700}; 
-//     PeriodicPKTs_Size = {900, 900, 900, 900, 900}; 
+
+
+     for (NodeContainer::Iterator L = ueResponders.Begin(); L != ueResponders.End(); ++L)
+     {
+       int ID;
+       Ptr<Node> node = *L;
+       ID = node->GetId ();
+//       if (ID % 2 == 0)   
+       if (ID % ModuloSplit <= 1)   
+       {
+         if (inputPDB != 0)
+           PDB_Periodic.push_back(inputPDB);
+         else
+           PDB_Periodic.push_back(20);
+//           PDB_Periodic.push_back(20);
+         Periodic_Tgen.push_back(20);
+//         Periodic_Tgen.push_back(20);
+       }
+       else
+       {
+         if (inputPDB != 0)
+           PDB_Periodic.push_back(inputPDB);
+         else
+           PDB_Periodic.push_back(100);
+//           PDB_Periodic.push_back(20);
+         Periodic_Tgen.push_back(100);
+//         Periodic_Tgen.push_back(20);
+       }
+     } 
+//     PeriodicPKTs_Size = {190-34, 190-34, 190-34, 190-34 ,190-34}; //Account for the overhead
+//     PeriodicPKTs_Size = {300-34, 190-34, 190-34, 190-34 ,190-34}; //Account for the overhead
+//     PeriodicPKTs_Size = {300-34, 300-34, 300-34, 300-34 ,300-34}; //Account for the overhead
+     PeriodicPKTs_Size = {200-35, 200-35, 200-35, 200-35, 200-35}; //Account for the overhead
      LargestPeriodicSize = PeriodicPKTs_Size[0];  // 300 bytes is the largest packet size for aperiodic traffic
 
      Ptr<UniformRandomVariable> random_index = CreateObject<UniformRandomVariable>();
@@ -1040,6 +1289,57 @@ main (int argc, char *argv[])
 
   NS_LOG_INFO ("Installing UE network devices...");
   NetDeviceContainer ueDevs = lteHelper->InstallUeDevice (ueResponders);
+
+  for (NodeContainer::Iterator L = ueResponders.Begin(); L != ueResponders.End(); ++L)
+  {
+    Ptr<Node> node = *L;
+    NS_LOG_INFO("Node " << node->GetId() << ", " << node->GetNDevices());
+    Ptr<NetDevice> dev = node->GetDevice(0);
+    Ptr<NistLteUeNetDevice> netDev = dev->GetObject<NistLteUeNetDevice>();
+    Ptr<NrV2XUeMac> mac = netDev->GetMac();
+
+    if (FrequencyReuse)
+      mac->CopySubchannelsMap(SubchannelIndexMap);
+
+    if (PeriodicTraffic)
+    {
+      mac->PushNewRRIValue(100);
+      mac->PushNewRRIValue(20);
+    }
+    else if (AperiodicTraffic)
+    {
+      if (avgRRI) 
+      {
+        mac->PushNewRRIValue(RndExp->GetMean()*2);
+        mac->PushNewRRIValue(RndExp_1->GetMean()*2);
+      }
+      else
+      {
+        mac->PushNewRRIValue(RndExp->GetMean());
+        mac->PushNewRRIValue(RndExp_1->GetMean());
+      }
+    }
+    else  // Mixed traffic
+    {
+      mac->PushNewRRIValue(100);
+//      mac->PushNewRRIValue(20);
+      if (avgRRI) 
+      {
+        mac->PushNewRRIValue(RndExp->GetMean()*2);
+        mac->PushNewRRIValue(RndExp_1->GetMean()*2);
+      }
+      else
+      {
+        mac->PushNewRRIValue(RndExp->GetMean());
+        mac->PushNewRRIValue(RndExp_1->GetMean());
+      }
+    }
+//      mac->PushNewRRIValue(100);
+//      mac->PushNewRRIValue(20);
+//      mac->PushNewRRIValue(50);
+//      mac->PushNewRRIValue(10);
+    
+  }
 
    // NetDeviceContainer ueSendersDevs = lteHelper->InstallUeDevice (ueResponders);
    // ueDevs.Add (ueSendersDevs);
@@ -1097,21 +1397,22 @@ main (int argc, char *argv[])
   UdpClientHelper udpClient (groupAddress , 8000); //set destination IP address and UDP port (8000 in this case). The group address is used to set the Sidelink Bearers
 
   udpClient.SetAttribute ("MaxPackets", UintegerValue (100000));
-  udpClient.SetAttribute ("Interval", TimeValue (MilliSeconds (Tgen_periodic)));  // Useful only for periodic traffic
-  udpClient.SetAttribute ("PacketSize", UintegerValue (1111));  // Fake value, useless
+  udpClient.SetAttribute ("Interval", TimeValue (MilliSeconds (100)));  // Useful only for periodic traffic
+  udpClient.SetAttribute ("PacketSize", UintegerValue (423));  // Fake value, useless
 
   ApplicationContainer clientApps = udpClient.Install(ueResponders);
 //  ApplicationContainer clientApps = udpClient.Install(ueResponders.Get(0));  // Similar to NodeContainer, but now is a vector of smart pointers pointing to applications
 //  clientApps.Add(udpClient.Install(ueResponders.Get(1)));	
   Ptr<UniformRandomVariable> rand = CreateObject<UniformRandomVariable>();
- 
+
 //@OLD  clientApps.Get(0) -> SetStartTime(Seconds (rand -> GetValue(0.001, 1.0)));
   for(uint32_t i = 0; i < ueResponders.GetN(); i++)
   {
-      //@DOC: Randomize the generation time of CAM messages
+      //@DOC: Randomize the generation time of CAM messages    
       clientApps.Get(i) -> SetStartTime(Seconds (rand -> GetValue(0.001, 1.0)));
       clientApps.Get(i) -> SetStopTime (Seconds (simTime + 0.5)); // The simulation ends at simTime + 1, so we have a buffer of 0.5s 
   }
+
 //  clientApps.Get(0) -> SetStartTime(Seconds (0.1));
 //  clientApps.Get(1) -> SetStartTime(Seconds (0.6));
 //  clientApps.Get(2) -> SetStartTime(Seconds (0.6));
@@ -1145,7 +1446,6 @@ main (int argc, char *argv[])
   preconfiguration.preconfigGeneral.carrierFreq = 54900; //not important
   preconfiguration.preconfigGeneral.slBandwidth = channelBW_RBs;    //original: 50 PRBs = 10MHz
   preconfiguration.preconfigComm.nbPools = 1; // the number of pools, not relevant for V2V
-
 
   NistSlPreconfigPoolFactory pfactory;
   NistSlResourcePoolFactory commfactory;
