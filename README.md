@@ -12,7 +12,7 @@ With respect to v1.0, the MoReV2X simulator has been significantly extended over
 * Encoding and decoding of the 2nd-stage SCI
 * Platooning with unicast and groupcast communications
 
-Should you need any information about the code and how to run it please feel free to contact: luca.lusvarghi5@unimore.it  
+Should you need any information about the code and how to run it please feel free to contact: llusvarghi@umh.es  
 
 The upgrade of MoReV2X to the latest version of ns-3 is currently underway, stay tuned!
 
@@ -29,7 +29,7 @@ and then build ns-3 typing
 
 # About
 List of people who contributed to this project: 
-* Luca Lusvarghi (luca.lusvarghi5@unimore.it), Università degli Studi di Modena e Reggio Emilia, Italy
+* Luca Lusvarghi (llusvarghi@umh.es), Universidad Miguel Hernandez de Elche, Spain
 * Lorenzo Gibellini, Università degli Studi di Modena e Reggio Emilia, Italy
 * Maria Luisa Merani, Università degli Studi di Modena e Reggio Emilia, Italy
 * Alejandro Molina-Galan, Universidad Miguel Hernandez de Elche (UMH), Spain
